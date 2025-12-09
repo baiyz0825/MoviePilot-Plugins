@@ -1218,15 +1218,16 @@ class SubAI(_PluginBase):
                     },
                     {
                         'component': 'VExpansionPanels',
-                        'props': {'variant': 'accordion', 'multiple': True},
+                        'props': {'variant': 'accordion'},
                         'content': [
                             {
                                 'component': 'VExpansionPanel',
-                                'props': {'v-show': 'translate_zh'},
                                 'content': [
                                     {
                                         'component': 'VExpansionPanelTitle',
-                                        'text': '大模型翻译设置'
+                                        'props': {
+                                            'text': '大模型翻译设置'
+                                        }
                                     },
                                     {
                                         'component': 'VExpansionPanelText',
@@ -1268,7 +1269,7 @@ class SubAI(_PluginBase):
                                             },
                                             {
                                                 'component': 'VRow',
-                                                'props': {'v-show': 'openai_config_source === "custom"'},
+                                                'props': {'v-show': '{{openai_config_source==="custom"}}'},
                                                 'content': [
                                                     {
                                                         'component': 'VCol',
@@ -1302,7 +1303,7 @@ class SubAI(_PluginBase):
                                             },
                                             {
                                                 'component': 'VRow',
-                                                'props': {'v-show': 'openai_config_source === "custom"'},
+                                                'props': {'v-show': '{{openai_config_source==="custom"}}'},
                                                 'content': [
                                                     {
                                                         'component': 'VCol',
@@ -1397,7 +1398,7 @@ class SubAI(_PluginBase):
                                                     },
                                                     {
                                                         'component': 'VCol',
-                                                        'props': {'cols': 12, 'md': 4, 'v-show': 'enable_batch'},
+                                                        'props': {'cols': 12, 'md': 4, 'v-show': '{{enable_batch}}'},
                                                         'content': [
                                                             {
                                                                 'component': 'VTextField',
