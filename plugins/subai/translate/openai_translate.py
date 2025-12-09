@@ -22,8 +22,16 @@ class OpenAi:
             import httpx
             http_client = httpx.Client(proxies=proxy)
         
+        # 处理base_url，避免重复添加/v1
+        base_url = None
+        if self._api_url:
+            if self._api_url.endswith("/v1"):
+                base_url = self._api_url
+            else:
+                base_url = self._api_url + "/v1"
+        
         self._client = OpenAI(
-            base_url=self._api_url + "/v1" if self._api_url else None,
+            base_url=base_url,
             api_key=self._api_key,
             http_client=http_client
         )

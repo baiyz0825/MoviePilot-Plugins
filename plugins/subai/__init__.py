@@ -66,7 +66,7 @@ class SubAI(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "2.0"
     # 插件作者
     plugin_author = "baiyz0825"
     # 作者主页
@@ -128,17 +128,33 @@ class SubAI(_PluginBase):
             self._huggingface_proxy = config.get('proxy', True)
         self._translate_zh = config.get('translate_zh', False)
         if self._translate_zh:
-            chatgpt = self.get_config("ChatGPT")
-            if not chatgpt:
-                logger.error(f"翻译依赖于ChatGPT，请先维护ChatGPT插件")
-                return
-            openai_key = chatgpt and chatgpt.get("openai_key")
-            openai_url = chatgpt and chatgpt.get("openai_url")
-            openai_proxy = chatgpt and chatgpt.get("proxy")
-            openai_model = chatgpt and chatgpt.get("model")
+            # 获取OpenAI配置来源
+            openai_config_source = config.get("openai_config_source", "custom")  # custom or chatgpt
+            
+            if openai_config_source == "custom":
+                # 使用自定义OpenAI配置
+                openai_key = config.get("openai_key")
+                openai_url = config.get("openai_url")
+                openai_proxy = config.get("openai_proxy")
+                openai_model = config.get("openai_model", "gpt-3.5-turbo")
+            else:
+                # 从ChatGPT插件获取配置（向后兼容）
+                chatgpt = self.get_config("ChatGPT")
+                if chatgpt:
+                    openai_key = chatgpt.get("openai_key")
+                    openai_url = chatgpt.get("openai_url")
+                    openai_proxy = chatgpt.get("proxy")
+                    openai_model = chatgpt.get("model")
+                else:
+                    openai_key = None
+                    openai_url = None
+                    openai_proxy = None
+                    openai_model = None
+            
             if not openai_key:
-                logger.error(f"翻译依赖于ChatGPT，请先维护openai_key")
+                logger.error(f"翻译依赖于OpenAI，请先配置OpenAI API密钥")
                 return
+                
             self._openai = OpenAi(api_key=openai_key, api_url=openai_url,
                                   proxy=settings.PROXY if openai_proxy else None,
                                   model=openai_model)
@@ -1143,7 +1159,7 @@ class SubAI(_PluginBase):
                                         'props': {
                                             'model': 'translate_zh',
                                             'label': '翻译成中文',
-                                            'hint': '需要配置ChatGPT插件'
+                                            'hint': '需要配置OpenAI API'
                                         }
                                     }
                                 ]
@@ -1215,6 +1231,108 @@ class SubAI(_PluginBase):
                                     {
                                         'component': 'VExpansionPanelText',
                                         'content': [
+                                            {
+                                                'component': 'VRow',
+                                                'content': [
+                                                    {
+                                                        'component': 'VCol',
+                                                        'props': {'cols': 12},
+                                                        'content': [
+                                                            {
+                                                                'component': 'VRadioGroup',
+                                                                'props': {
+                                                                    'model': 'openai_config_source',
+                                                                    'label': 'OpenAI配置来源',
+                                                                    'inline': True
+                                                                },
+                                                                'content': [
+                                                                    {
+                                                                        'component': 'VRadio',
+                                                                        'props': {
+                                                                            'label': '自定义配置',
+                                                                            'value': 'custom'
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        'component': 'VRadio',
+                                                                        'props': {
+                                                                            'label': '使用ChatGPT插件配置',
+                                                                            'value': 'chatgpt'
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'VRow',
+                                                'props': {'v-show': 'openai_config_source === "custom"'},
+                                                'content': [
+                                                    {
+                                                        'component': 'VCol',
+                                                        'props': {'cols': 12, 'md': 6},
+                                                        'content': [
+                                                            {
+                                                                'component': 'VTextField',
+                                                                'props': {
+                                                                    'model': 'openai_key',
+                                                                    'label': 'OpenAI API Key',
+                                                                    'placeholder': '请输入OpenAI API密钥'
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        'component': 'VCol',
+                                                        'props': {'cols': 12, 'md': 6},
+                                                        'content': [
+                                                            {
+                                                                'component': 'VTextField',
+                                                                'props': {
+                                                                    'model': 'openai_url',
+                                                                    'label': 'OpenAI API URL',
+                                                                    'placeholder': '留空默认使用官方API'
+                                                                }
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'VRow',
+                                                'props': {'v-show': 'openai_config_source === "custom"'},
+                                                'content': [
+                                                    {
+                                                        'component': 'VCol',
+                                                        'props': {'cols': 12, 'md': 6},
+                                                        'content': [
+                                                            {
+                                                                'component': 'VTextField',
+                                                                'props': {
+                                                                    'model': 'openai_model',
+                                                                    'label': 'OpenAI 模型',
+                                                                    'placeholder': '默认使用 gpt-3.5-turbo'
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        'component': 'VCol',
+                                                        'props': {'cols': 12, 'md': 6},
+                                                        'content': [
+                                                            {
+                                                                'component': 'VSwitch',
+                                                                'props': {
+                                                                    'model': 'openai_proxy',
+                                                                    'label': '使用系统代理'
+                                                                }
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
                                             {
                                                 'component': 'VRow',
                                                 'content': [
@@ -1307,7 +1425,7 @@ class SubAI(_PluginBase):
                                                                 'props': {
                                                                     'type': 'info',
                                                                     'variant': 'tonal',
-                                                                    'text': '翻译依赖 ChatGPT 插件配置'
+                                                                    'text': '翻译依赖 OpenAI API 配置'
                                                                 }
                                                             }
                                                         ]
@@ -1377,6 +1495,12 @@ class SubAI(_PluginBase):
             "enable_merge": False,
             "enable_batch": True,
             "batch_size": 10,
+            # OpenAI配置
+            "openai_config_source": "custom",  # custom or chatgpt
+            "openai_key": "",
+            "openai_url": "",
+            "openai_proxy": True,
+            "openai_model": "gpt-3.5-turbo"
         }
 
     def get_api(self) -> List[Dict[str, Any]]:
