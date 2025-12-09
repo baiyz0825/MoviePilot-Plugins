@@ -24,8 +24,8 @@ from app.schemas.types import NotificationType, EventType
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.system import SystemUtils
-from plugins.autosubv2.ffmpeg import Ffmpeg
-from plugins.autosubv2.translate.openai_translate import OpenAi
+from plugins.autosubopenai.ffmpeg import Ffmpeg
+from plugins.autosubopenai.translate.openai_translate import OpenAi
 
 
 class UserInterruptException(Exception):
@@ -58,7 +58,7 @@ class TaskItem:
 
 class AutoSubv2(_PluginBase):
     # 插件名称
-    plugin_name = "AI字幕自动生成(v3)"
+    plugin_name = "AI字幕自动生成(openai)"
     # 插件描述
     plugin_desc = "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。"
     # 插件图标
@@ -72,7 +72,7 @@ class AutoSubv2(_PluginBase):
     # 作者主页
     author_url = "https://github.com/baiyz0825"
     # 插件配置项ID前缀
-    plugin_config_prefix = "autosubv3"
+    plugin_config_prefix = "autosubopenai"
     # 加载顺序
     plugin_order = 14
     # 可使用的用户级别
