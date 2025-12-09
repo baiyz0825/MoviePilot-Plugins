@@ -3,14 +3,15 @@
         "name": "AI字幕自动生成(openai)",
         "description": "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。",
         "labels": "字幕",
-        "version": "2.0",
+        "version": "3.0",
         "icon": "autosubtitles.jpeg",
         "author": "baiyz0825",
         "level": 1,
         "v2": true,
         "history": {
-          "v1": "fix openai",
-          "v2": "fix openai支持自定义配置"
+          "1.0": "fix openai",
+          "2.0": "fix openai支持自定义配置",
+          "3.0": "修复界面"
         }
       }
 }
