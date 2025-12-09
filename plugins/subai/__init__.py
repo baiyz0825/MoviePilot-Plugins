@@ -1235,7 +1235,7 @@ class SubAI(_PluginBase):
                     },
                     {
                         'component': 'VExpansionPanels',
-                        'props': {'variant': 'accordion'},
+                        'props': {'variant': 'accordion', 'v-show': 'translate_zh'},
                         'content': [
                             {
                                 'component': 'VExpansionPanel',
