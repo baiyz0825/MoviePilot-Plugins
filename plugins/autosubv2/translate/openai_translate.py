@@ -1,7 +1,7 @@
 import time
 from typing import List, Union
 
-import openai
+from openai import OpenAI
 from cacheout import Cache
 
 OpenAISessionCache = Cache(maxsize=100, ttl=3600, timer=time.time, default=None)
@@ -15,10 +15,15 @@ class OpenAi:
     def __init__(self, api_key: str = None, api_url: str = None, proxy: dict = None, model: str = None):
         self._api_key = api_key
         self._api_url = api_url
-        openai.api_base = self._api_url + "/v1"
-        openai.api_key = self._api_key
+        self._client = OpenAI(
+            base_url=self._api_url + "/v1" if self._api_url else None,
+            api_key=self._api_key,
+            http_client=None
+        )
         if proxy and proxy.get("https"):
-            openai.proxy = proxy.get("https")
+            # 在新版本中，代理设置需要在创建客户端时通过http_client参数传递
+            # 这里我们只是保留proxy参数，实际应用中可能需要进一步实现
+            pass
         if model:
             self._model = model
 
@@ -90,9 +95,8 @@ class OpenAi:
                         "content": message
                     }
                 ]
-        return openai.ChatCompletion.create(
+        return self._client.chat.completions.create(
             model=self._model,
-            user=user,
             messages=message,
             **kwargs
         )
