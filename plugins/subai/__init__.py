@@ -24,8 +24,8 @@ from app.schemas.types import NotificationType, EventType
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.system import SystemUtils
-from plugins.autosubopenai.ffmpeg import Ffmpeg
-from plugins.autosubopenai.translate.openai_translate import OpenAi
+from plugins.subai.ffmpeg import Ffmpeg
+from plugins.subai.translate.openai_translate import OpenAi
 
 
 class UserInterruptException(Exception):
