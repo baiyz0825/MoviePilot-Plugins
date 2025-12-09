@@ -58,7 +58,7 @@ class TaskItem:
 
 class AutoSubv2(_PluginBase):
     # 插件名称
-    plugin_name = "AI字幕自动生成(v2)"
+    plugin_name = "AI字幕自动生成(v3)"
     # 插件描述
     plugin_desc = "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。"
     # 插件图标
@@ -66,13 +66,13 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "2.2"
+    plugin_version = "2.3"
     # 插件作者
-    plugin_author = "TimoYoung"
+    plugin_author = "baiyz0825"
     # 作者主页
-    author_url = "https://github.com/TimoYoung"
+    author_url = "https://github.com/baiyz0825"
     # 插件配置项ID前缀
-    plugin_config_prefix = "autosubv2"
+    plugin_config_prefix = "autosubv3"
     # 加载顺序
     plugin_order = 14
     # 可使用的用户级别
