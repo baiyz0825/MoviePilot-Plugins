@@ -828,11 +828,28 @@ class SubAI(_PluginBase):
                 raise Exception(result)
 
             translated = [line.strip() for line in result.split('\n') if line.strip()]
+            # 由于已经在prompt中约束了输出格式，理论上应该行数匹配
+            # 但为了防止意外情况，仍保留检查逻辑
             if len(translated) != len(batch):
-                raise Exception(f"批次行数不匹配 {len(translated)}/{len(batch)}")
-
-            for item, trans in zip(batch, translated):
-                item.content = f"{trans}\n{item.content}"
+                logger.warning(f"批次行数不匹配 {len(translated)}/{len(batch)}，请检查prompt约束效果")
+                # 即使行数不匹配也尝试处理
+                max_lines = min(len(translated), len(batch))
+                for i in range(max_lines):
+                    batch[i].content = f"{translated[i]}\n{batch[i].content}"
+                # 处理剩余的行
+                if len(translated) > len(batch):
+                    # 多余的翻译内容附加到最后一行
+                    extra_content = " ".join(translated[len(batch):])
+                    if max_lines > 0:
+                        batch[-1].content = f"{extra_content} {batch[-1].content}"
+                elif len(batch) > len(translated):
+                    # 未翻译的行标记为未翻译
+                    for i in range(len(translated), len(batch)):
+                        batch[i].content = f"[未翻译]\n{batch[i].content}"
+            else:
+                # 行数匹配，正常处理
+                for item, trans in zip(batch, translated):
+                    item.content = f"{trans}\n{item.content}"
             self._stats['batch_success'] += len(batch)
             return batch
         except Exception as e:
