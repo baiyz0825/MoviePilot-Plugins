@@ -56,7 +56,7 @@ class TaskItem:
     complete_time: datetime = None
 
 
-class AutoSubOpenai(_PluginBase):
+class SubAI(_PluginBase):
     # 插件名称
     plugin_name = "AI字幕自动生成(openai)"
     # 插件描述
@@ -72,7 +72,7 @@ class AutoSubOpenai(_PluginBase):
     # 作者主页
     author_url = "https://github.com/baiyz0825"
     # 插件配置项ID前缀
-    plugin_config_prefix = "autosubopenai"
+    plugin_config_prefix = "subai"
     # 加载顺序
     plugin_order = 14
     # 可使用的用户级别
