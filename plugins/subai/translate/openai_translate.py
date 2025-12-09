@@ -3,6 +3,7 @@ from typing import List, Union
 
 from openai import OpenAI
 from cacheout import Cache
+from app.log import logger
 
 OpenAISessionCache = Cache(maxsize=100, ttl=3600, timer=time.time, default=None)
 
@@ -15,7 +16,7 @@ class OpenAi:
     def __init__(self, api_key: str = None, api_url: str = None, proxy: dict = None, model: str = None):
         self._api_key = api_key
         self._api_url = api_url
-        
+
         # 处理代理设置
         http_client = None
         if proxy and proxy.get("https"):
@@ -31,7 +32,7 @@ class OpenAi:
                 except TypeError:
                     # 如果两种方式都不支持，则不使用代理
                     http_client = httpx.Client()
-        
+
         # 处理base_url，避免重复添加/v1
         base_url = None
         if self._api_url:
@@ -39,7 +40,7 @@ class OpenAi:
                 base_url = self._api_url
             else:
                 base_url = self._api_url + "/v1"
-        
+
         self._client = OpenAI(
             base_url=base_url,
             api_key=self._api_key,
@@ -157,6 +158,7 @@ class OpenAi:
                                           temperature=0.2,
                                           top_p=0.9)
             result = completion.choices[0].message.content.strip()
+            logger.debug(f"请求 system_prompt: {system_prompt}\n user_prompt:{user_prompt}\n response: {result}\n")
             return True, result
         except Exception as e:
             print(f"{str(e)}：{result}")
