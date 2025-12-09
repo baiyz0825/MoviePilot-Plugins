@@ -56,7 +56,7 @@ class TaskItem:
     complete_time: datetime = None
 
 
-class AutoSubv2(_PluginBase):
+class AutoSubOpenai(_PluginBase):
     # 插件名称
     plugin_name = "AI字幕自动生成(openai)"
     # 插件描述
