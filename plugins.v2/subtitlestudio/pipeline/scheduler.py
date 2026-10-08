@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 import threading
+import traceback
 import uuid
 from datetime import datetime, time as dt_time
 from typing import Any, Callable, Dict, Optional
 
+from ..core.logging import studio_done, studio_log
 from ..core.models import Job
 from ..ingest.debounce import IngestDebouncer
 from ..ingest.gates import evaluate_gates, is_strm_path
@@ -85,6 +87,7 @@ class JobScheduler:
         identity = identity or {}
         ok, reason = evaluate_gates(config or {}, path, payload)
         if not ok and not force:
+            studio_log(self.logger, "info", "入队跳过 title=%s trigger=%s reason=%s path=%s", title or path, trigger, reason, path)
             job = Job(
                 job_id=uuid.uuid4().hex,
                 title=title or path,
@@ -101,6 +104,7 @@ class JobScheduler:
             )
             return self.store.save_job(job)
         if trigger != "manual" and not force and not self.debouncer.allow(identity, path):
+            studio_log(self.logger, "info", "5 分钟防抖，跳过重复入队 trigger=%s path=%s", trigger, path)
             existing = next((item for item in self.store.list_jobs(q=path, limit=20) if item.path == path), None)
             if existing:
                 return existing
@@ -121,6 +125,18 @@ class JobScheduler:
             payload=payload or {},
         )
         saved = self.store.save_job(job)
+        studio_log(
+            self.logger,
+            "info",
+            "已入队 job=%s title=%s trigger=%s priority=%s strategy=%s strm=%s path=%s",
+            saved.job_id,
+            saved.title,
+            saved.trigger,
+            saved.priority,
+            saved.strategy,
+            saved.is_strm,
+            saved.path,
+        )
         self.kick()
         return saved
 
@@ -130,6 +146,7 @@ class JobScheduler:
             return job
         job.priority = "P0"
         job.queue_rank = self.store.next_queue_rank()
+        studio_log(self.logger, "info", "插队 job=%s title=%s 升为 P0", job.job_id, job.title)
         return self.store.save_job(job)
 
     def set_priority(self, job_id: str, priority: str) -> Optional[Job]:
@@ -137,6 +154,7 @@ class JobScheduler:
         if not job or job.status not in {"pending"} or priority not in {"P0", "P1", "P2"}:
             return job
         job.priority = priority
+        studio_log(self.logger, "info", "改优先级 job=%s title=%s -> %s", job.job_id, job.title, priority)
         return self.store.save_job(job)
 
     def cancel(self, job_id: str) -> Optional[Job]:
@@ -145,9 +163,11 @@ class JobScheduler:
             return job
         if job.status == "running":
             job.payload = {**job.payload, "cancel": True}
+            studio_log(self.logger, "info", "标记取消运行中任务 job=%s title=%s", job.job_id, job.title)
             return self.store.save_job(job)
         job.status = "cancelled"
         job.finished_at = utc_now()
+        studio_log(self.logger, "info", "取消排队任务 job=%s title=%s", job.job_id, job.title)
         return self.store.save_job(job)
 
     def retry(self, job_id: str) -> Optional[Job]:
@@ -161,6 +181,7 @@ class JobScheduler:
         job.payload = {k: v for k, v in job.payload.items() if k != "cancel"}
         job.queue_rank = self.store.tail_queue_rank()
         saved = self.store.save_job(job)
+        studio_log(self.logger, "info", "重试入队 job=%s title=%s", saved.job_id, saved.title)
         self.kick()
         return saved
 
@@ -173,8 +194,9 @@ class JobScheduler:
             try:
                 self._step()
             except Exception as exc:  # noqa: BLE001 — 工作线程不能被单次失败打死
+                studio_log(self.logger, "error", "队列循环失败：%s", exc)
                 if self.logger:
-                    self.logger.error("[SubtitleStudio] 队列循环失败：%s", exc)
+                    self.logger.error(traceback.format_exc())
 
     def _step(self) -> None:
         if self.store.running_job():
@@ -194,6 +216,7 @@ class JobScheduler:
         job.status = "running"
         job.started_at = utc_now()
         self.store.save_job(job)
+        studio_log(self.logger, "info", "开始执行 job=%s title=%s priority=%s", job.job_id, job.title, job.priority)
         try:
             self.runner(job)
             latest = self.store.get_job(job.job_id) or job
@@ -203,10 +226,13 @@ class JobScheduler:
                 latest.status = "success"
             latest.finished_at = utc_now()
             self.store.save_job(latest)
+            studio_log(self.logger, "info", "队列回收 job=%s status=%s", latest.job_id, latest.status)
         except Exception as exc:  # noqa: BLE001
             job.status = "failed"
             job.error = str(exc)
             job.finished_at = utc_now()
             self.store.save_job(job)
+            studio_log(self.logger, "error", "任务失败 job=%s title=%s error=%s", job.job_id, job.title, exc)
             if self.logger:
-                self.logger.error("[SubtitleStudio] 任务失败 %s：%s", job.job_id, exc)
+                self.logger.error(traceback.format_exc())
+            studio_done(self.logger)

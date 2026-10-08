@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
+from ..core.logging import studio_log
 from ..core.models import Endpoint
 
 
@@ -44,8 +45,7 @@ class LlmRouter:
                     return self._call(endpoint, prompt, system)
                 except Exception as exc:  # noqa: BLE001
                     last_error = str(exc)
-                    if self.logger:
-                        self.logger.warning("[SubtitleStudio] 线路 %s 失败：%s", endpoint.name or endpoint.endpoint_id, exc)
+                    studio_log(self.logger, "warning", "线路 %s 失败（第 %s/%s 次）role=%s：%s", endpoint.name or endpoint.endpoint_id, _attempt + 1, retries, role, exc)
         raise RuntimeError(last_error)
 
     def _call(self, endpoint: Endpoint, prompt: str, system: str) -> str:

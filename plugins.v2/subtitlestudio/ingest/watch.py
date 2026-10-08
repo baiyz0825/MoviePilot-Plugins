@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
+from ..core.logging import studio_log
 from ..core.paths import parse_multiline_paths
 from ..ingest.gates import is_strm_path, is_video_path
 
@@ -21,8 +22,7 @@ class WatchService:
             from watchdog.observers import Observer
             from watchdog.events import FileSystemEventHandler
         except Exception as exc:  # noqa: BLE001
-            if self.logger:
-                self.logger.warning("[SubtitleStudio] 未安装 watchdog，目录监控不可用：%s", exc)
+            studio_log(self.logger, "warning", "未安装 watchdog，目录监控不可用：%s", exc)
             return
 
         owner = self
@@ -44,10 +44,12 @@ class WatchService:
             observer.schedule(handler, str(path), recursive=True)
             started = True
         if not started:
+            studio_log(self.logger, "warning", "%s 监控没有可扫的目录", "STRM" if strm else "媒体目录")
             return
         observer.daemon = True
         observer.start()
         self._observer = observer
+        studio_log(self.logger, "info", "已启动%s监控 paths=%s", "STRM" if strm else "媒体目录", ",".join(str(item) for item in paths))
 
     def stop(self) -> None:
         if self._observer:
@@ -66,8 +68,7 @@ class WatchService:
         try:
             self.on_file(path, "strm" if strm else "watch")
         except Exception as exc:  # noqa: BLE001
-            if self.logger:
-                self.logger.error("[SubtitleStudio] 监控回调失败：%s", exc)
+            studio_log(self.logger, "error", "监控回调失败 path=%s：%s", path, exc)
 
 
 def watch_paths_from_config(config: dict) -> List[str]:

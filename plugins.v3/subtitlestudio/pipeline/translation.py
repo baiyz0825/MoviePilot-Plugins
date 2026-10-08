@@ -10,6 +10,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ..core.format_repair import repair_model_batch
+from ..core.logging import studio_log
 from ..core.models import CueGraph, Issue
 from .mt_engines import FreeMtRouter
 
@@ -63,8 +64,10 @@ class TranslationService:
     def _translate_lang(self, graph: CueGraph, lang: str) -> None:
         pending = [cue for cue in graph.sorted_cues() if not cue.text(lang)]
         if not pending:
+            studio_log(self.logger, "info", "语种 %s 已有译文，跳过", lang)
             return
         backend = str(self.config.get("translate_backend") or "free_first")
+        studio_log(self.logger, "info", "翻译语种 %s 待译 %s 句 backend=%s", lang, len(pending), backend)
         if backend in {"free_first", "free_only"}:
             try:
                 texts = [cue.text() for cue in pending]
@@ -76,10 +79,13 @@ class TranslationService:
                 if backend == "free_only":
                     self._mark_failed(pending, lang, str(exc))
                     return
-                if self.logger:
-                    self.logger.warning("[SubtitleStudio] 免费引擎失败，改走大模型：%s", exc)
+                studio_log(self.logger, "warning", "免费引擎失败，改走大模型：%s", exc)
         leftover = [cue for cue in pending if not cue.text(lang)]
+        filled = len(pending) - len(leftover)
+        if filled:
+            studio_log(self.logger, "info", "免费引擎译出 %s/%s 句 lang=%s", filled, len(pending), lang)
         if leftover and backend != "free_only":
+            studio_log(self.logger, "info", "大模型补译 %s 句 lang=%s", len(leftover), lang)
             self._translate_with_llm(leftover, lang)
 
     def _translate_with_llm(self, cues, lang: str) -> None:
@@ -93,7 +99,10 @@ class TranslationService:
         items = [{"id": cue.cue_id, "text": cue.text()} for cue in cues]
         chunks = [items[i:i + batch_size] for i in range(0, len(items), batch_size)] if enable_batch else [[item] for item in items]
         lookup = {cue.cue_id: cue for cue in cues}
-        for chunk in chunks:
+        total = len(chunks)
+        for index, chunk in enumerate(chunks, start=1):
+            if total > 1 and (index == 1 or index == total or index % max(1, total // 10) == 0):
+                studio_log(self.logger, "info", "大模型翻译进度 %s/%s 批 lang=%s", index, total, lang)
             self._run_chunk(chunk, lookup, lang, context_window, partial)
 
     def _run_chunk(self, chunk, lookup, lang: str, context_window: int, partial: bool) -> None:

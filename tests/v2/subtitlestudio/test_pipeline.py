@@ -74,6 +74,58 @@ def test_strm_never_calls_asr(tmp_path: Path, gen: str = GEN):
     assert saved.status == "failed"
 
 
+def test_generation_writes_step_logs(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    (tmp_path / "Movie.en.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    lines = []
+
+    class Sink:
+        def info(self, message, *args):
+            lines.append(message % args if args else message)
+
+        def warning(self, message, *args):
+            lines.append(message % args if args else message)
+
+        def error(self, message, *args):
+            lines.append(message % args if args else message)
+
+    def llm(prompt, **_kwargs):
+        match = re.search(r"\[([^\]]+)\]", prompt)
+        cue_id = match.group(1) if match else "1"
+        return f'[{{"id":"{cue_id}","zh":"你好"}}]'
+
+    pipeline = gen_mod.GenerationPipeline(
+        store,
+        lambda: {
+            "translate_enabled": True,
+            "translate_backend": "llm_only",
+            "target_languages": ["zh-Hans"],
+            "export_preset": "library_zh",
+            "export_layouts": ["mono"],
+            "export_formats": ["srt"],
+            "overwrite_policy": "overwrite",
+            "enable_asr": False,
+            "effects_enabled": False,
+        },
+        llm=llm,
+        logger=Sink(),
+    )
+    job = models.Job(job_id="j-log", title="Movie", path=str(video), trigger="manual")
+    store.save_job(job)
+    pipeline.run(job)
+    text = "\n".join(lines)
+    assert "[SubtitleStudio] [Step 0] 开始处理" in text
+    assert "[Step 1] 查找本地外挂" in text
+    assert "[Step 4] 翻译开始" in text
+    assert "[Step 6] 写出导出包" in text
+    assert "处理完成" in text
+
+
 def test_effects_character_brief_is_top_note(gen: str = GEN):
     models = load_domain(gen, "core.models")
     effects = load_domain(gen, "pipeline.effects")

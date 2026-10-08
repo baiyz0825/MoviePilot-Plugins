@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .core.logging import studio_log
 from .ingest.watch import WatchService, strm_paths_from_config, watch_paths_from_config
 from .pipeline.asr import transcribe
 from .pipeline.generation import GenerationPipeline
@@ -50,6 +51,15 @@ class StudioServices:
 
     def start(self, config: dict) -> None:
         self.scheduler.start()
+        studio_log(
+            self.plugin.host_logger,
+            "info",
+            "队列已启动 event=%s watch=%s strm=%s workers=%s",
+            config.get("ingest_on_event"),
+            config.get("ingest_on_watch"),
+            config.get("strm_enabled"),
+            config.get("parallel_workers"),
+        )
         if config.get("ingest_on_watch"):
             self.watch.start(watch_paths_from_config(config), strm=False)
         if config.get("strm_enabled"):

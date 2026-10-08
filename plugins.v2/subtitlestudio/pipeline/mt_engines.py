@@ -10,6 +10,8 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
 
+from ..core.logging import studio_log
+
 HttpFn = Callable[..., Any]
 
 
@@ -46,8 +48,7 @@ class FreeMtRouter:
                     return self._libre(texts, source, target)
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
-                if self.logger:
-                    self.logger.warning("[SubtitleStudio] 免费引擎 %s 失败：%s", engine, exc)
+                studio_log(self.logger, "warning", "免费引擎 %s 失败：%s", engine, exc)
         raise RuntimeError(last_error or "免费翻译引擎全部失败")
 
     def _get(self, url: str, **kwargs: Any) -> Any:

@@ -83,13 +83,14 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             self._services.stop()
             self._services = None
         if not self._enabled:
+            self.host_logger.info("[SubtitleStudio] 插件未启用，不接新任务")
             self._unbind_events()
             remove_once()
             return
         self._bind_events()
         self._services = StudioServices(self)
         self._services.start(self._config)
-        self.host_logger.info("[SubtitleStudio] V3 服务已启动")
+        self.host_logger.info("[SubtitleStudio] V3 服务已启动 ingest_event=%s ingest_watch=%s", self._config.get("ingest_on_event"), self._config.get("ingest_on_watch"))
 
     def current_config(self) -> Dict[str, Any]:
         return dict(self._config or {})
@@ -247,8 +248,10 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             return
         identity = identity_from_event(event)
         title = event_title(event, "")
+        files = list(files_from_event(event))
+        self.host_logger.info("[SubtitleStudio] 收到整理完成 title=%s files=%s", title or "-", len(files))
         enqueued = 0
-        for path in files_from_event(event):
+        for path in files:
             if Path(path).suffix.lower() not in set(media_extensions()) | {".strm"} and not is_video_path(path):
                 continue
             self.services.scheduler.enqueue(
@@ -262,7 +265,10 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             )
             enqueued += 1
         if enqueued:
+            self.host_logger.info("[SubtitleStudio] 整理完成已入队 %s 条，3 秒后启动队列", enqueued)
             schedule_once(self.kick_queue, delay_seconds=3)
+        else:
+            self.host_logger.info("[SubtitleStudio] 整理完成没有可入队的视频文件")
 
     def listen_plugin_action(self, event) -> None:
         data = getattr(event, "event_data", None) or {}

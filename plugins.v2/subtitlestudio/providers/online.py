@@ -10,6 +10,7 @@ import re
 from typing import Any, Callable, Dict, List
 from urllib.parse import quote
 
+from ..core.logging import studio_log
 from .local import list_sidecars
 
 
@@ -25,6 +26,7 @@ class OnlineSearchService:
     def search(self, job, config: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
         cfg = config or self.config
         providers = list(cfg.get("online_providers") or [])
+        studio_log(self.logger, "info", "在线搜索 title=%s providers=%s", job.title, ",".join(providers) or "无")
         results: List[Dict[str, Any]] = []
         for provider in providers:
             try:
@@ -37,10 +39,12 @@ class OnlineSearchService:
                 elif provider == "zimuku":
                     results.extend(self._html_search(cfg.get("zimuku_url") or "https://zmk.pw", job.title, "zimuku"))
             except Exception as exc:  # noqa: BLE001
-                if self.logger:
-                    self.logger.warning("[SubtitleStudio] 搜索 %s 失败：%s", provider, exc)
+                studio_log(self.logger, "warning", "搜索 %s 失败：%s", provider, exc)
+            else:
+                studio_log(self.logger, "info", "搜索 %s 得到 %s 条", provider, len([item for item in results if item.get("provider") == provider]))
         if cfg.get("effects_enabled"):
             results.sort(key=lambda item: (0 if re.search(r"特效|解说", item.get("title") or "") else 1, item.get("title") or ""))
+        studio_log(self.logger, "info", "在线搜索合计 %s 条", len(results))
         return results
 
     def best_download(self, job, config: Dict[str, Any] | None = None) -> Dict[str, Any] | None:
@@ -48,11 +52,14 @@ class OnlineSearchService:
         local = list_sidecars(job.path)
         if local:
             path = PathLike(local[0]["path"])
+            studio_log(self.logger, "info", "搜索前已有本地外挂 %s", local[0]["filename"])
             return {"filename": local[0]["filename"], "content": path.read_text(encoding="utf-8", errors="ignore"), "lang": "source"}
         results = self.search(job, cfg)
         if not results:
+            studio_log(self.logger, "info", "在线搜索无结果 title=%s", job.title)
             return None
         top = results[0]
+        studio_log(self.logger, "info", "选用 %s / %s", top.get("provider"), top.get("title") or top.get("filename"))
         if top.get("content"):
             return top
         url = top.get("download_url") or top.get("url")

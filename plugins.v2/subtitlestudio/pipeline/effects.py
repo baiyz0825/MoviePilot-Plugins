@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, List, Optional
 
+from ..core.logging import studio_log
 from ..core.models import Cue, CueGraph, Issue
 
 CJK_NAME = re.compile(r"[\u3400-\u9fff]{2,8}")
@@ -93,8 +94,7 @@ class EffectsBuilder:
                 role="research",
             )
         except Exception as exc:  # noqa: BLE001
-            if self.logger:
-                self.logger.warning("[SubtitleStudio] 检索失败 %s：%s", term, exc)
+            studio_log(self.logger, "warning", "检索失败 %s：%s", term, exc)
             return "", False
         text = str(raw or "").strip()
         if not text or "UNVERIFIED" in text.upper():
