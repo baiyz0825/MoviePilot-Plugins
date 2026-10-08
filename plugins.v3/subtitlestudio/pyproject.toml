@@ -1,0 +1,11 @@
+[project]
+name = "subtitlestudio"
+version = "2.0.0"
+description = "MoviePilot V3 字幕工坊"
+requires-python = ">=3.10"
+dependencies = [
+  "httpx2>=0.1.0",
+  "srt~=3.5.3",
+  "pysubs2>=1.8.0",
+  "watchdog>=4.0.0",
+]

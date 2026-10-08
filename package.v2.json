@@ -188,5 +188,22 @@
             "v3.5.31": "Ling-flash-2.0测试通过；采用fewshot示例格式，token降低26%；全场景3/3成功",
             "v3.5.30": "优化批量翻译prompt为fewshot示例格式，token消耗降低30%；当前测试最优prompt"
         }
+    },
+    "SubtitleStudio": {
+        "name": "字幕工坊",
+        "description": "独立完成字幕搜索、识别、免费/大模型翻译、特效顶注、导出包和工作台预览，不委托其它字幕插件。",
+        "labels": "字幕,翻译,ASR,工作台",
+        "version": "1.0.0",
+        "icon": "https://raw.githubusercontent.com/ifsherlock/MoviePilot-Plugins/main/icons/autosubtitles.jpeg",
+        "author": "ifsherlock",
+        "author_url": "https://github.com/ifsherlock",
+        "level": 1,
+        "system_version": ">=2.13.5",
+        "v2": true,
+        "v3": false,
+        "release": true,
+        "history": {
+            "v1.0.0": "新增字幕工坊：事件/目录双路入队、有序多语导出、格式修复、免费引擎优先翻译、工作台时间轴与挂载预览"
+        }
     }
 }
