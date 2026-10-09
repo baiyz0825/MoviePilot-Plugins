@@ -76,10 +76,21 @@ def test_official_hooks_exist():
     assert defaults["ingest_on_watch"] is False
     assert plugin.get_command()[0]["cmd"] == "/subtitle_studio_run"
     assert any(item["path"] == "/jobs" for item in plugin.get_api())
-    assert any(item["path"] == "/jobs/{job_id}/preview/ass" for item in plugin.get_api())
+    apis = plugin.get_api()
+    assert any(item["path"] == "/jobs/{job_id}/preview/ass" for item in apis)
+    status = next(item for item in apis if item["path"] == "/status")
+    assert status.get("response_model") is not None
+    preview = next(item for item in apis if item["path"].endswith("/preview/ass"))
+    assert preview.get("response_model") is None
+    assert preview.get("responses")
     assert plugin.get_page() == []
     assert defaults["send_notify"] is False
     assert defaults["notify_on"] == ["success", "failed"]
+    plugin._enabled = True
+    plugin._config["queue_offpeak_enabled"] = True
+    services = plugin.get_service()
+    assert services
+    assert services[0]["id"] == f"{plugin.__class__.__name__}.Offpeak"
 
 
 def test_notify_job_uses_plugin_channel():

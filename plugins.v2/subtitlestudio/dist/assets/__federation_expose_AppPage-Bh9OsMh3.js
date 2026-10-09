@@ -149,6 +149,7 @@ const _sfc_main = {
   props: {
   api: { type: Object, default: () => ({}) },
   pluginId: { type: String, default: 'SubtitleStudio' },
+  sourcePluginId: { type: String, default: 'SubtitleStudio' },
   navKey: { type: String, default: 'main' },
   hideTitle: { type: Boolean, default: false },
 },

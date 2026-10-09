@@ -34,6 +34,7 @@ def test_v3_host_adapter_uses_sdk():
     assert "from app.sdk.config import settings" in host
     assert "from app.sdk.logging import logger" in host
     assert "app.sdk.events" in host
+    assert "from app.schemas.types import EventType" in host
     assert "add_plugin_once_job" in host
     assert "identity_from_v3_pair" in host
     assert any("httpx2" in line for line in imports)
@@ -41,6 +42,9 @@ def test_v3_host_adapter_uses_sdk():
     assert "from app.core.event" not in imports
     assert "from app.log import logger" not in imports
     assert "from app.core.config import settings" not in imports
+    assert "SessionFactory" not in host
+    assert "app.db.models" not in host
+    assert "TransferHistoryOper" in host
 
 
 def test_v3_does_not_register_events_at_import():
@@ -57,7 +61,11 @@ def test_v3_requirements_use_httpx2():
     assert "httpx2" in req
     assert "httpx>=" not in req
     pyproject = _source("pyproject.toml")
-    assert 'version = "2.0.0"' in pyproject
+    assert 'dynamic = ["version"]' in pyproject
+    assert "requires-python" in pyproject
+    assert "httpx2" in pyproject
+    assert "faster-whisper" in pyproject
+    assert 'version = "2.0.0"' not in pyproject
 
 
 def test_domain_has_no_app_imports():
@@ -88,9 +96,20 @@ def test_official_hooks_exist():
     assert plugin.get_command()[0]["cmd"] == "/subtitle_studio_run"
     assert defaults["send_notify"] is False
     assert defaults["notify_on"] == ["success", "failed"]
-    paths = [item["path"] for item in plugin.get_api()]
+    apis = plugin.get_api()
+    paths = [item["path"] for item in apis]
     assert "/jobs" in paths
     assert "/jobs/{job_id}/preview/video" in paths
+    status = next(item for item in apis if item["path"] == "/status")
+    assert status.get("response_model") is not None
+    preview = next(item for item in apis if item["path"].endswith("/preview/ass"))
+    assert preview.get("response_model") is None
+    assert preview.get("responses")
+    plugin._enabled = True
+    plugin._config = {"queue_offpeak_enabled": True}
+    services = plugin.get_service()
+    assert services
+    assert services[0]["id"] == f"{plugin.__class__.__name__}.Offpeak"
 
 
 def test_notify_job_uses_plugin_channel():

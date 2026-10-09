@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import _sfc_main$1 from './__federation_expose_AppPage-Ck3XYWFQ.js';
+import _sfc_main$1 from './__federation_expose_AppPage-Bh9OsMh3.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,mergeProps:_mergeProps,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -12,6 +12,7 @@ const _sfc_main = {
   props: {
   api: { type: Object, default: () => ({}) },
   pluginId: { type: String, default: 'SubtitleStudio' },
+  sourcePluginId: { type: String, default: 'SubtitleStudio' },
   navKey: { type: String, default: 'main' },
 },
   emits: ['close', 'action', 'switch'],

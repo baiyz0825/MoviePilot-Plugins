@@ -16,6 +16,7 @@ const _sfc_main = {
   props: {
   api: { type: Object, default: () => ({}) },
   pluginId: { type: String, default: 'SubtitleStudio' },
+  sourcePluginId: { type: String, default: 'SubtitleStudio' },
   initialConfig: { type: Object, default: () => ({}) },
 },
   emits: ['save', 'close', 'switch'],

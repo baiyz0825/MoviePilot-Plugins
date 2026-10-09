@@ -16,6 +16,7 @@ from ..core.history import group_media_items
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
 from ..core.response import fail, ok
 from ..ingest.gates import evaluate_gates
+from .schemas import make_envelope, payload_model_for
 
 
 def build_api_routes(plugin) -> List[Dict[str, Any]]:
@@ -40,36 +41,76 @@ def build_api_routes(plugin) -> List[Dict[str, Any]]:
         _route("/jobs/{job_id}/search", plugin.api_search_job, ["POST"], "在线搜索"),
         _route("/endpoints/test", plugin.api_test_endpoint, ["POST"], "测连通"),
         _route("/endpoints/models", plugin.api_list_models, ["POST"], "拉模型列表"),
-        {
-            "path": "/jobs/{job_id}/preview/video",
-            "endpoint": plugin.api_preview_video,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "预览原片（Range）",
-            "response_model": None,
-        },
-        {
-            "path": "/jobs/{job_id}/preview/ass",
-            "endpoint": plugin.api_preview_ass,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "当前 CueGraph 打成预览 ASS",
-            "response_model": None,
-        },
+        _preview_route("/jobs/{job_id}/preview/video", plugin.api_preview_video, "预览原片（Range）", "video"),
+        _preview_route("/jobs/{job_id}/preview/ass", plugin.api_preview_ass, "当前 CueGraph 打成预览 ASS", "ass"),
     ]
 
 
+def finalize_api_routes(routes: List[Dict[str, Any]], *, generation: str) -> List[Dict[str, Any]]:
+    """V3 用宿主 Response[T]；V2 用本地信封模型。原生预览保持 response_model=None。"""
+    host_response = None
+    try:
+        from app.schemas import Response
+        host_response = Response
+    except Exception:
+        host_response = None
+    finalized = []
+    for item in routes:
+        route = dict(item)
+        if route.get("path", "").endswith(("/preview/video", "/preview/ass")):
+            finalized.append(route)
+            continue
+        payload = payload_model_for(route.get("path") or "", (route.get("methods") or ["GET"])[0])
+        if payload is None:
+            finalized.append(route)
+            continue
+        if generation == "v3" and host_response is not None:
+            try:
+                route["response_model"] = host_response[payload]
+            except Exception:
+                route["response_model"] = make_envelope(payload) or payload
+        else:
+            route["response_model"] = make_envelope(payload) or payload
+        finalized.append(route)
+    return finalized
+
+
 def _route(path: str, endpoint, methods: List[str], summary: str) -> Dict[str, Any]:
-    item = {
+    return {
         "path": path,
         "endpoint": endpoint,
         "methods": methods,
         "auth": "bear",
         "summary": summary,
     }
-    response_model = getattr(endpoint, "response_model", None)
-    if response_model is not None:
-        item["response_model"] = response_model
+
+
+def _preview_route(path: str, endpoint, summary: str, kind: str) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "path": path,
+        "endpoint": endpoint,
+        "methods": ["GET"],
+        "auth": "bear",
+        "summary": summary,
+        "response_model": None,
+    }
+    if kind == "ass":
+        try:
+            from fastapi.responses import PlainTextResponse
+            item["response_class"] = PlainTextResponse
+        except Exception:
+            pass
+        item["responses"] = {200: {"content": {"text/plain": {"schema": {"type": "string"}}}}}
+        return item
+    try:
+        from fastapi.responses import FileResponse
+        item["response_class"] = FileResponse
+    except Exception:
+        pass
+    item["responses"] = {
+        200: {"content": {"video/mp4": {"schema": {"type": "string", "format": "binary"}}}},
+        204: {"description": "STRM 或无法提供原片"},
+    }
     return item
 
 

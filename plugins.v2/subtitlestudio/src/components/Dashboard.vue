@@ -5,6 +5,7 @@ import { createStudioApi } from '../api/studioApi'
 const props = defineProps({
   api: { type: Object, default: () => ({}) },
   pluginId: { type: String, default: 'SubtitleStudio' },
+  sourcePluginId: { type: String, default: 'SubtitleStudio' },
   config: { type: Object, default: () => ({}) },
   allowRefresh: { type: Boolean, default: true },
 })

@@ -15,10 +15,9 @@ export default defineConfig({
         './Dashboard': './src/components/Dashboard.vue',
       },
       shared: {
-        vue: {
-          requiredVersion: false,
-          generate: false,
-        },
+        vue: { requiredVersion: false, generate: false, singleton: true },
+        vuetify: { requiredVersion: false, generate: false, singleton: true },
+        'vuetify/styles': { requiredVersion: false, generate: false, singleton: true },
       },
       format: 'esm',
     }),
@@ -44,6 +43,11 @@ export default defineConfig({
         {
           postcssPlugin: 'vuetify-filter',
           Root(root) {
+            const sourcePath = root.source?.input?.file?.replaceAll('\\', '/') || ''
+            if (sourcePath.includes('/node_modules/vuetify/') || sourcePath.includes('/node_modules/@mdi/')) {
+              root.nodes = []
+              return
+            }
             root.walkRules(rule => {
               if (rule.selector && (rule.selector.includes('.v-') || rule.selector.includes('.mdi-'))) {
                 rule.remove()

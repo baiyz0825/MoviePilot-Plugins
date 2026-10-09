@@ -125,6 +125,7 @@ def install_app_stubs(generation: str = "v2") -> None:
     ensure("app.scheduler")
     ensure("app.sdk.scheduler")
     ensure("app.db.models.transferhistory", TransferHistory=object)
+    ensure("app.db.oper.transferhistory", TransferHistoryOper=object)
     ensure("app.db.oper.transfer", TransferHistoryOper=object)
     ensure("app.agent.tools.base")
 

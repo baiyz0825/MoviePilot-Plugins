@@ -17,7 +17,10 @@ def test_vite_exposes_four_federation_entries(gen: str = GEN):
     assert "'./AppPage'" in vite
     assert "'./Dashboard'" in vite
     assert "generate: false" in vite
+    assert "'vuetify/styles'" in vite
+    assert "singleton: true" in vite
     assert "vuetify-filter" in vite
+    assert "node_modules/vuetify" in vite
     assets = plugin_root(gen) / "dist" / "assets"
     assert (assets / "remoteEntry.js").is_file()
     names = [path.name for path in assets.rglob("*")]
@@ -35,6 +38,9 @@ def test_app_page_matches_mobile_contract(gen: str = GEN):
     assert "提交识别" in page
     assert "ss-timeline" in page
     assert "PreviewPlayer" in page
+    assert "sourcePluginId" in page
+    assert "sourcePluginId" in _read("src/components/Config.vue", gen=gen)
+    assert "sourcePluginId" in _read("src/components/Dashboard.vue", gen=gen)
     assert "watch_paths" not in page or True
 
 

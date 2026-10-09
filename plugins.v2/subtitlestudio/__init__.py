@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.plugins import _PluginBase
 
-from .api.routes import StudioApiMixin, build_api_routes
+from .api.routes import StudioApiMixin, build_api_routes, finalize_api_routes
 from .automation.actions import WorkflowMixin, build_actions
 from .automation.agent_tools import get_agent_tools
 from .core.config_schema import (
@@ -89,7 +89,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             self._services = None
         if not self._enabled:
             self.host_logger.info("[SubtitleStudio] 插件未启用，不接新任务")
-            remove_once()
+            remove_once(plugin_id=self.__class__.__name__)
             return
         self._services = StudioServices(self)
         self._services.start(self._config)
@@ -111,7 +111,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         if self._services:
             self._services.stop()
             self._services = None
-        remove_once()
+        remove_once(plugin_id=self.__class__.__name__)
         self.host_logger.info("[SubtitleStudio] V2 服务已停止")
 
     @staticmethod
@@ -125,7 +125,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         return []
 
     def get_api(self) -> List[Dict[str, Any]]:
-        return build_api_routes(self)
+        return finalize_api_routes(build_api_routes(self), generation="v2")
 
     def get_sidebar_nav(self) -> List[Dict[str, Any]]:
         if not self.get_state() or not self._show_sidebar_nav:
@@ -152,7 +152,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         return build_actions(self)
 
     def get_agent_tools(self) -> List[type]:
-        return get_agent_tools()
+        return get_agent_tools(self.__class__.__name__)
 
     def get_service(self) -> List[Dict[str, Any]]:
         if not self.get_state() or not self._config.get("queue_offpeak_enabled"):
@@ -163,7 +163,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         except Exception:
             trigger = "cron"
         return [{
-            "id": "SubtitleStudio.Offpeak",
+            "id": f"{self.__class__.__name__}.Offpeak",
             "name": "字幕工坊错峰队列",
             "trigger": trigger,
             "func": self.run_offpeak,
@@ -249,7 +249,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         if enqueued:
             # 事件里只入队，搜站放到 3 秒防抖，避免整理风暴打满字幕站。
             self.host_logger.info("[SubtitleStudio] 整理完成已入队 %s 条，3 秒后启动队列", enqueued)
-            schedule_once(self.kick_queue, delay_seconds=3)
+            schedule_once(self.kick_queue, delay_seconds=3, plugin_id=self.__class__.__name__)
         else:
             self.host_logger.info("[SubtitleStudio] 整理完成没有可入队的视频文件")
 

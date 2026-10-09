@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import List
 
+from ..host import get_running_plugin
 
 try:
     from app.agent.tools.base import MoviePilotTool
@@ -20,31 +21,21 @@ except Exception:  # noqa: BLE001
             return self.description
 
 
+try:
+    from pydantic import BaseModel, Field
+
+    class EnqueueInput(BaseModel):
+        path: str = Field("", description="媒体文件路径")
+        title: str = Field("", description="标题")
+except Exception:  # noqa: BLE001
+    EnqueueInput = {"path": "媒体文件路径", "title": "标题"}
+
+
 class _StudioTool(MoviePilotTool):
+    plugin_lookup_id = "SubtitleStudio"
+
     def _plugin(self):
-        managers = []
-        try:
-            from app.sdk.plugins import PluginManager as SdkManager
-            managers.append(SdkManager)
-        except Exception:
-            pass
-        try:
-            from app.core.plugin import PluginManager as CoreManager
-            managers.append(CoreManager)
-        except Exception:
-            pass
-        for manager_cls in managers:
-            try:
-                manager = manager_cls()
-                plugin = getattr(manager, "get_plugin", lambda *_: None)("SubtitleStudio")
-                if plugin:
-                    return plugin
-                plugin = getattr(manager, "get_running_plugin", lambda *_: None)("SubtitleStudio")
-                if plugin:
-                    return plugin
-            except Exception:
-                continue
-        return None
+        return get_running_plugin(getattr(self, "plugin_lookup_id", None) or "SubtitleStudio")
 
     def get_tool_message(self, *args, **kwargs):
         return self.description
@@ -66,7 +57,7 @@ class SubtitleStudioStatusTool(_StudioTool):
 class SubtitleStudioEnqueueTool(_StudioTool):
     name = "subtitle_studio_enqueue"
     description = "把一部媒体加入字幕工坊队列"
-    args_schema = {"path": "媒体文件路径", "title": "标题"}
+    args_schema = EnqueueInput
 
     async def run(self, path: str = "", title: str = "", **kwargs) -> str:
         plugin = self._plugin()
@@ -76,5 +67,8 @@ class SubtitleStudioEnqueueTool(_StudioTool):
         return data.get("message") or str(data.get("data") or "")
 
 
-def get_agent_tools() -> List[type]:
-    return [SubtitleStudioStatusTool, SubtitleStudioEnqueueTool]
+def get_agent_tools(plugin_id: str = "SubtitleStudio") -> List[type]:
+    return [
+        type(f"{plugin_id}StatusTool", (SubtitleStudioStatusTool,), {"plugin_lookup_id": plugin_id, "name": "subtitle_studio_status"}),
+        type(f"{plugin_id}EnqueueTool", (SubtitleStudioEnqueueTool,), {"plugin_lookup_id": plugin_id, "name": "subtitle_studio_enqueue", "args_schema": EnqueueInput}),
+    ]

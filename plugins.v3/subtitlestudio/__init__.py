@@ -15,7 +15,7 @@ try:
 except Exception:  # noqa: BLE001 — 部分宿主仍从 app.plugins 暴露基类
     from app.plugins import _PluginBase
 
-from .api.routes import StudioApiMixin, build_api_routes
+from .api.routes import StudioApiMixin, build_api_routes, finalize_api_routes
 from .automation.actions import WorkflowMixin, build_actions
 from .automation.agent_tools import get_agent_tools
 from .core.config_schema import (
@@ -85,7 +85,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         if not self._enabled:
             self.host_logger.info("[SubtitleStudio] 插件未启用，不接新任务")
             self._unbind_events()
-            remove_once()
+            remove_once(plugin_id=self.__class__.__name__)
             return
         self._bind_events()
         self._services = StudioServices(self)
@@ -109,7 +109,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             self._services.stop()
             self._services = None
         self._unbind_events()
-        remove_once()
+        remove_once(plugin_id=self.__class__.__name__)
         self.host_logger.info("[SubtitleStudio] V3 服务已停止")
 
     def _bind_events(self):
@@ -137,17 +137,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         return []
 
     def get_api(self) -> List[Dict[str, Any]]:
-        routes = build_api_routes(self)
-        try:
-            from app.schemas import Response
-        except Exception:
-            return routes
-        for item in routes:
-            if item.get("response_model") is None and item.get("path", "").endswith(("/preview/video", "/preview/ass")):
-                continue
-            if "response_model" not in item:
-                item["response_model"] = Response[dict]
-        return routes
+        return finalize_api_routes(build_api_routes(self), generation="v3")
 
     def get_sidebar_nav(self) -> List[Dict[str, Any]]:
         if not self.get_state() or not self._show_sidebar_nav:
@@ -174,7 +164,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         return build_actions(self)
 
     def get_agent_tools(self) -> List[type]:
-        return get_agent_tools()
+        return get_agent_tools(self.__class__.__name__)
 
     def get_service(self) -> List[Dict[str, Any]]:
         if not self.get_state() or not self._config.get("queue_offpeak_enabled"):
@@ -185,7 +175,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         except Exception:
             trigger = "cron"
         return [{
-            "id": "SubtitleStudio.Offpeak",
+            "id": f"{self.__class__.__name__}.Offpeak",
             "name": "字幕工坊错峰队列",
             "trigger": trigger,
             "func": self.run_offpeak,
@@ -268,7 +258,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             enqueued += 1
         if enqueued:
             self.host_logger.info("[SubtitleStudio] 整理完成已入队 %s 条，3 秒后启动队列", enqueued)
-            schedule_once(self.kick_queue, delay_seconds=3)
+            schedule_once(self.kick_queue, delay_seconds=3, plugin_id=self.__class__.__name__)
         else:
             self.host_logger.info("[SubtitleStudio] 整理完成没有可入队的视频文件")
 

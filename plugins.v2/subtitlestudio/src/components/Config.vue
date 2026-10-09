@@ -9,6 +9,7 @@ import SettingsForm from './shared/SettingsForm.vue'
 const props = defineProps({
   api: { type: Object, default: () => ({}) },
   pluginId: { type: String, default: 'SubtitleStudio' },
+  sourcePluginId: { type: String, default: 'SubtitleStudio' },
   initialConfig: { type: Object, default: () => ({}) },
 })
 

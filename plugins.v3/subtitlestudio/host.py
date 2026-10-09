@@ -30,38 +30,35 @@ except Exception:  # noqa: BLE001
     logger = logging.getLogger("subtitlestudio")
 
 try:
-    from app.sdk.events import eventmanager, Event as MPEvent, EventType
+    from app.sdk.events import eventmanager, Event as MPEvent
 except Exception:  # noqa: BLE001
+    class _Noop:
+        @staticmethod
+        def register(_event_type):
+            def decorator(func):
+                return func
+            return decorator
+
+        @staticmethod
+        def add_event_listener(*_args, **_kwargs):
+            return None
+
+        @staticmethod
+        def remove_event_listener(*_args, **_kwargs):
+            return None
+
+    eventmanager = _Noop()
+    MPEvent = Any
+
+try:
+    from app.schemas.types import EventType
+except Exception:  # noqa: BLE001 — 官方稳定入口；个别宿主再退回 SDK
     try:
-        from app.sdk.events import eventmanager, Event as MPEvent
-        from app.schemas.types import EventType
+        from app.sdk.events import EventType
     except Exception:
-        class _Noop:
-            @staticmethod
-            def register(_event_type):
-                def decorator(func):
-                    return func
-                return decorator
-
-            @staticmethod
-            def add_event_listener(*_args, **_kwargs):
-                return None
-
-            @staticmethod
-            def remove_event_listener(*_args, **_kwargs):
-                return None
-
-        eventmanager = _Noop()
-        MPEvent = Any
-
         class EventType:
             TransferComplete = "transfer.complete"
             PluginAction = "plugin.action"
-
-try:
-    from app.sdk.plugins import PluginManager
-except Exception:  # noqa: BLE001
-    PluginManager = None
 
 try:
     import httpx2
@@ -157,33 +154,53 @@ def http_request(method: str, url: str, **kwargs: Any) -> Any:
         return response.text
 
 
-def schedule_once(func: Callable, *, delay_seconds: int = 3, job_id: str = "ingest_once") -> None:
+def schedule_once(func: Callable, *, delay_seconds: int = 3, job_id: str = "ingest_once", plugin_id: str = "SubtitleStudio") -> None:
     try:
         from app.sdk.scheduler import add_plugin_once_job
-        add_plugin_once_job("SubtitleStudio", job_id, func, "字幕工坊入库触发", delay_seconds=delay_seconds)
+        add_plugin_once_job(plugin_id, job_id, func, "字幕工坊入库触发", delay_seconds=delay_seconds)
         return
     except Exception:
         pass
     try:
         from app.sdk import scheduler as scheduler_sdk
-        scheduler_sdk.add_plugin_once_job("SubtitleStudio", job_id, func, "字幕工坊入库触发", delay_seconds=delay_seconds)
+        scheduler_sdk.add_plugin_once_job(plugin_id, job_id, func, "字幕工坊入库触发", delay_seconds=delay_seconds)
         return
     except Exception:
         func()
 
 
-def remove_once(job_id: str = "ingest_once") -> None:
+def remove_once(job_id: str = "ingest_once", plugin_id: str = "SubtitleStudio") -> None:
     try:
         from app.sdk.scheduler import remove_plugin_once_job
-        remove_plugin_once_job("SubtitleStudio", job_id)
+        remove_plugin_once_job(plugin_id, job_id)
         return
     except Exception:
         pass
     try:
         from app.sdk import scheduler as scheduler_sdk
-        scheduler_sdk.remove_plugin_once_job("SubtitleStudio", job_id)
+        scheduler_sdk.remove_plugin_once_job(plugin_id, job_id)
     except Exception:
         return
+
+
+def get_running_plugin(plugin_id: str):
+    """只走 SDK PluginManager，按运行实例 ID 取插件。"""
+    try:
+        from app.sdk.plugins import PluginManager
+        manager = PluginManager()
+    except Exception:
+        return None
+    for name in ("get_plugin", "get_running_plugin"):
+        getter = getattr(manager, name, None)
+        if not getter:
+            continue
+        try:
+            plugin = getter(plugin_id)
+        except Exception:
+            plugin = None
+        if plugin:
+            return plugin
+    return None
 
 
 def register_listener(event_type, callback: Callable) -> None:
@@ -208,7 +225,7 @@ def plugin_action_type():
 
 def plugin_notification_type():
     """V3 优先 SDK schema，退回宿主 types。"""
-    for module_name in ("app.sdk.schema", "app.sdk.schemas", "app.schemas.types"):
+    for module_name in ("app.schemas.types", "app.sdk.schema", "app.sdk.schemas"):
         try:
             module = __import__(module_name, fromlist=["NotificationType"])
             enum = getattr(module, "NotificationType", None)
@@ -234,23 +251,17 @@ def deliver_notice(plugin, payload: Dict[str, Any]) -> None:
 
 
 def load_transfer_history(limit: int = 800) -> List[Dict[str, Any]]:
-    """V3 整理记录必须自己拿 Session，不能把 None 传给模型。"""
+    """V3 只走公开 Oper，不查询宿主内部表结构。"""
     from .core.history import history_object_to_dict
     items = []
     try:
-        from app.db.models.transferhistory import TransferHistory
-        from app.db.session import SessionFactory
-        session = SessionFactory()
-        try:
-            items = TransferHistory.list_by_page(session, page=1, count=limit, status=True) or []
-        finally:
-            session.close()
+        from app.db.oper.transferhistory import TransferHistoryOper
+        listing = getattr(TransferHistoryOper(), "list_by_page", None)
+        if listing:
+            try:
+                items = listing(page=1, count=limit, status=True) or []
+            except TypeError:
+                items = listing(1, limit) or []
     except Exception:
-        try:
-            from app.db.oper.transferhistory import TransferHistoryOper
-            oper = TransferHistoryOper()
-            listing = getattr(oper, "list_by_page", None)
-            items = listing(page=1, count=limit, status=True) if listing else []
-        except Exception:
-            items = []
+        items = []
     return [history_object_to_dict(item) for item in items or []]

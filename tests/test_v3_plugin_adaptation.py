@@ -47,3 +47,6 @@ def test_v3_subtitlestudio_uses_sdk_imports():
     assert "from app.sdk.plugin import _PluginBase" in source or "app.sdk.plugin" in source
     assert "from app.core.event import eventmanager" not in source
     assert "from app.log import logger" not in source
+    assert "from app.core.plugin" not in source
+    assert "SessionFactory" not in source
+    assert "from app.db.models" not in source
