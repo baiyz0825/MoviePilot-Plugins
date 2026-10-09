@@ -1,3 +1,5 @@
+import { existsSync, unlinkSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import federation from '@originjs/vite-plugin-federation'
@@ -21,6 +23,21 @@ export default defineConfig({
       },
       format: 'esm',
     }),
+    {
+      name: 'strip-standalone-html',
+      generateBundle(_options, bundle) {
+        for (const fileName of Object.keys(bundle)) {
+          const base = fileName.split('/').pop() || fileName
+          if (fileName === 'index.html' || /^index-[^/]+\.js$/.test(base)) {
+            delete bundle[fileName]
+          }
+        }
+      },
+      closeBundle() {
+        const html = resolve(__dirname, 'dist/index.html')
+        if (existsSync(html)) unlinkSync(html)
+      },
+    },
   ],
   build: {
     target: 'esnext',

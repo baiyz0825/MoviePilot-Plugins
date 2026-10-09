@@ -23,8 +23,10 @@ def test_vite_exposes_four_federation_entries(gen: str = GEN):
     assert "node_modules/vuetify" in vite
     assets = plugin_root(gen) / "dist" / "assets"
     assert (assets / "remoteEntry.js").is_file()
+    assert not (plugin_root(gen) / "dist" / "index.html").is_file()
     names = [path.name for path in assets.rglob("*")]
     assert not any(name.startswith("__federation_shared_vuetify") for name in names)
+    assert not any(name.startswith("index-") and name.endswith(".js") for name in names)
 
 
 def test_app_page_matches_mobile_contract(gen: str = GEN):
