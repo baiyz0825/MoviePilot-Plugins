@@ -26,7 +26,7 @@
 
 | 插件 | V2 版本 | V3 版本 | 主要功能 |
 | --- | --- | --- | --- |
-| 字幕工坊 | 1.0.1 | 2.0.1 | 搜索 / 识别 / 翻译 / 特效顶注 / 导出包 / 工作台预览 |
+| 字幕工坊 | 1.0.2 | 2.0.2 | 搜索 / 识别 / 翻译 / 特效顶注 / 导出包 / 工作台预览 |
 
 ## 字幕工坊
 
@@ -42,7 +42,7 @@
 - 可选 MoviePilot 通知（类型：插件），默认同步成功和失败。
 - 工作台时间轴、挂载预览、队列插队。
 
-版本：V2 `1.0.1`（`>=2.13.5`，`package.v2.json` 且 `"v3": false`），V3 `2.0.1`（`>=3.0.0`）。索引 `"release": true`，安装走 GitHub Release 里的完整 zip（`subtitlestudio_v1.0.1.zip` / `subtitlestudio_v2.0.1.zip`）。没有这个包时，宿主可能只落到入口文件，加载报 `No module named 'app.plugins.subtitlestudio.api'`。
+版本：V2 `1.0.2`（`>=2.13.5`，`package.v2.json` 且 `"v3": false`），V3 `2.0.2`（`>=3.0.0`）。索引 `"release": true`，安装走 GitHub Release 里的完整 zip（`subtitlestudio_v1.0.2.zip` / `subtitlestudio_v2.0.2.zip`）。没有这个包时，宿主可能只落到入口文件，加载报 `No module named 'app.plugins.subtitlestudio.api'`。
 
 ## 安装方式
 

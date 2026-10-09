@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import ClassVar, List
 
 from ..host import get_running_plugin
 
@@ -32,10 +32,11 @@ except Exception:  # noqa: BLE001
 
 
 class _StudioTool(MoviePilotTool):
-    plugin_lookup_id = "SubtitleStudio"
+    # MoviePilotTool 是 Pydantic 模型，未标注的类属性会被当成字段，导入即失败。
+    plugin_lookup_id: ClassVar[str] = "SubtitleStudio"
 
     def _plugin(self):
-        return get_running_plugin(getattr(self, "plugin_lookup_id", None) or "SubtitleStudio")
+        return get_running_plugin(self.plugin_lookup_id)
 
     def get_tool_message(self, *args, **kwargs):
         return self.description
@@ -68,7 +69,12 @@ class SubtitleStudioEnqueueTool(_StudioTool):
 
 
 def get_agent_tools(plugin_id: str = "SubtitleStudio") -> List[type]:
-    return [
-        type(f"{plugin_id}StatusTool", (SubtitleStudioStatusTool,), {"plugin_lookup_id": plugin_id, "name": "subtitle_studio_status"}),
-        type(f"{plugin_id}EnqueueTool", (SubtitleStudioEnqueueTool,), {"plugin_lookup_id": plugin_id, "name": "subtitle_studio_enqueue", "args_schema": EnqueueInput}),
-    ]
+    class StatusTool(SubtitleStudioStatusTool):
+        plugin_lookup_id: ClassVar[str] = plugin_id
+
+    class EnqueueTool(SubtitleStudioEnqueueTool):
+        plugin_lookup_id: ClassVar[str] = plugin_id
+
+    StatusTool.__name__ = f"{plugin_id}StatusTool"
+    EnqueueTool.__name__ = f"{plugin_id}EnqueueTool"
+    return [StatusTool, EnqueueTool]

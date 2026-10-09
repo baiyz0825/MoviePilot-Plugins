@@ -52,7 +52,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     # 主题色
     plugin_color = "#0EA5E9"
     # 插件版本：V2 必须是 1.x，禁止和 V3 共用版本号，避免 Release Tag 碰撞
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     # 插件作者
     plugin_author = "baiyz0825"
     # 作者主页

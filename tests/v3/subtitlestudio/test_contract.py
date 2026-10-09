@@ -16,17 +16,28 @@ def test_v3_index_and_class_version_match():
     package = json.loads((ROOT / "package.v3.json").read_text(encoding="utf-8"))
     plugin_pkg = json.loads((plugin_root(GEN) / "package.json").read_text(encoding="utf-8"))
     meta = package["SubtitleStudio"]
-    assert meta["version"] == "2.0.1"
+    assert meta["version"] == "2.0.2"
     assert meta["system_version"] == ">=3.0.0"
     assert meta["release"] is True
+    assert "v2.0.2" in meta["history"]
     assert "v2.0.1" in meta["history"]
     assert "v2.0.0" in meta["history"]
-    assert plugin_pkg["version"] == "2.0.1"
+    assert plugin_pkg["version"] == "2.0.2"
     init = _source("__init__.py")
-    assert 'plugin_version = "2.0.1"' in init
+    assert 'plugin_version = "2.0.2"' in init
     assert "app.sdk.plugin" in init
     assert "from app.core.event" not in init
     assert "from app.log import logger" not in init
+
+
+def test_v3_agent_tools_lookup_id_is_classvar():
+    text = _source("automation/agent_tools.py")
+    assert "plugin_lookup_id: ClassVar[str]" in text
+    assert 'type(f"{plugin_id}StatusTool"' not in text
+    module = load_plugin_package(GEN)
+    tools = module.get_agent_tools("CloneStudio")
+    assert tools[0].plugin_lookup_id == "CloneStudio"
+    assert tools[1].plugin_lookup_id == "CloneStudio"
 
 
 def test_v3_release_tree_includes_api_package():

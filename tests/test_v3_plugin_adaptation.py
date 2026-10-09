@@ -22,7 +22,7 @@ def _class_name_and_version(path: Path) -> tuple[str, str]:
 
 
 def test_v3_subtitlestudio_keeps_stable_identity_and_version():
-    assert _class_name_and_version(ROOT / "plugins.v3/subtitlestudio/__init__.py") == ("SubtitleStudio", "2.0.1")
+    assert _class_name_and_version(ROOT / "plugins.v3/subtitlestudio/__init__.py") == ("SubtitleStudio", "2.0.2")
 
 
 def test_v3_index_and_v2_opt_out_are_consistent():
@@ -36,8 +36,9 @@ def test_v3_index_and_v2_opt_out_are_consistent():
     assert "SubtitleManualUpload" not in package_v3
     assert "MediaCoverGenerator" not in package_v2
     assert "MediaCoverGenerator" not in package_v1
-    assert package_v3["SubtitleStudio"]["version"] == "2.0.1"
+    assert package_v3["SubtitleStudio"]["version"] == "2.0.2"
     assert package_v3["SubtitleStudio"]["system_version"] == ">=3.0.0"
+    assert "v2.0.2" in package_v3["SubtitleStudio"]["history"]
     assert "v2.0.1" in package_v3["SubtitleStudio"]["history"]
     assert "v2.0.0" in package_v3["SubtitleStudio"]["history"]
     assert package_v2["SubtitleStudio"]["v3"] is False
