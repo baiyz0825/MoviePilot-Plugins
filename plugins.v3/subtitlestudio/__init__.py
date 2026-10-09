@@ -49,7 +49,7 @@ from .services import StudioServices
 class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     plugin_name = PLUGIN_NAME
     plugin_desc = "字幕搜索、识别、免费/大模型翻译、特效顶注与工作台预览。独立完成，不委托其它字幕插件。"
-    plugin_icon = "https://raw.githubusercontent.com/ifsherlock/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
+    plugin_icon = "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
     plugin_color = "#0EA5E9"
     # V3 必须是 2.x，禁止和 V2 共用版本号
     plugin_version = "2.0.0"

@@ -48,7 +48,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     # 插件描述
     plugin_desc = "字幕搜索、识别、免费/大模型翻译、特效顶注与工作台预览。独立完成，不委托其它字幕插件。"
     # 插件图标
-    plugin_icon = "https://raw.githubusercontent.com/ifsherlock/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
+    plugin_icon = "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
     # 主题色
     plugin_color = "#0EA5E9"
     # 插件版本：V2 必须是 1.x，禁止和 V3 共用版本号，避免 Release Tag 碰撞
