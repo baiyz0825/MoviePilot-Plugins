@@ -53,8 +53,8 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     plugin_color = "#0EA5E9"
     # V3 必须是 2.x，禁止和 V2 共用版本号
     plugin_version = "2.0.0"
-    plugin_author = "ifsherlock"
-    author_url = "https://github.com/ifsherlock"
+    plugin_author = "baiyz0825"
+    author_url = "https://github.com/baiyz0825"
     plugin_config_prefix = CONFIG_PREFIX
     plugin_order = 20
     auth_level = 1

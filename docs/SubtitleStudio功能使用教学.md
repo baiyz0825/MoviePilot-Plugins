@@ -25,7 +25,7 @@ V2 和 V3 的页面、配置字段、导出命名和任务行为一致。差别�
 1. 在 MoviePilot 第三方插件仓库中添加：
 
 ```text
-https://github.com/ifsherlock/MoviePilot-Plugins
+https://github.com/baiyz0825/MoviePilot-Plugins
 ```
 
 2. 打开「插件市场」，搜索「字幕工坊」。

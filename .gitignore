@@ -178,7 +178,6 @@ plugins.v3/*/pnpm-workspace.yaml
 .DS_Store
 plugins.v2/.DS_Store
 
-# Local Codex / agent notes
-AGENTS.md
+# Local Codex / agent notes（AGENTS.md 是仓库操作手册，纳入版本库）
 product.md
 docs/

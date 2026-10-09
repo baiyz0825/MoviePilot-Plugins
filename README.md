@@ -1,6 +1,6 @@
 # MoviePilot-Plugins
 
-同时维护 MoviePilot V2 与 V3 的个人插件仓库。字幕链路现在只维护 **字幕工坊**，本仓库已下架海拉鲁字幕大师和 AutoSubv3。
+同时维护 MoviePilot V2 与 V3 的个人插件仓库。本仓库只发布 **字幕工坊**，已下架海拉鲁字幕大师、AutoSubv3 和 Emby 媒体库封面生成。
 
 ## 文档
 
@@ -20,13 +20,13 @@
 
 - [V2 字幕工坊](plugins.v2/subtitlestudio/README.md)
 - [V3 字幕工坊](plugins.v3/subtitlestudio/README.md)
+- [Agent 操作手册](AGENTS.md)（给后续改代码的 agent 用）
 
 ## 插件列表
 
 | 插件 | V2 版本 | V3 版本 | 主要功能 |
 | --- | --- | --- | --- |
 | 字幕工坊 | 1.0.0 | 2.0.0 | 搜索 / 识别 / 翻译 / 特效顶注 / 导出包 / 工作台预览 |
-| Emby媒体库封面生成 | 0.9.11 | — | 生成媒体库动态 / 静态封面 |
 
 ## 字幕工坊
 
@@ -49,7 +49,7 @@
 在 MoviePilot 第三方插件仓库中添加本仓库地址：
 
 ```text
-https://github.com/ifsherlock/MoviePilot-Plugins
+https://github.com/baiyz0825/MoviePilot-Plugins
 ```
 
 安装「字幕工坊」即可，不必再装旧的字幕匹配或 AI 字幕生成插件。

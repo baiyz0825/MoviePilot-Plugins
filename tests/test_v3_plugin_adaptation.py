@@ -28,10 +28,14 @@ def test_v3_subtitlestudio_keeps_stable_identity_and_version():
 def test_v3_index_and_v2_opt_out_are_consistent():
     package_v3 = json.loads((ROOT / "package.v3.json").read_text(encoding="utf-8"))
     package_v2 = json.loads((ROOT / "package.v2.json").read_text(encoding="utf-8"))
+    assert set(package_v3) == {"SubtitleStudio"}
+    assert set(package_v2) == {"SubtitleStudio"}
+    package_v1 = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert package_v1 == {}
     assert "AutoSubv3" not in package_v3
     assert "SubtitleManualUpload" not in package_v3
-    assert "AutoSubv3" not in package_v2
-    assert "SubtitleManualUpload" not in package_v2
+    assert "MediaCoverGenerator" not in package_v2
+    assert "MediaCoverGenerator" not in package_v1
     assert package_v3["SubtitleStudio"]["version"] == "2.0.0"
     assert package_v3["SubtitleStudio"]["system_version"] == ">=3.0.0"
     assert "v2.0.0" in package_v3["SubtitleStudio"]["history"]

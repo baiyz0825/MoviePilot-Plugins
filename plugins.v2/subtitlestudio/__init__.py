@@ -54,9 +54,9 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     # 插件版本：V2 必须是 1.x，禁止和 V3 共用版本号，避免 Release Tag 碰撞
     plugin_version = "1.0.0"
     # 插件作者
-    plugin_author = "ifsherlock"
+    plugin_author = "baiyz0825"
     # 作者主页
-    author_url = "https://github.com/ifsherlock"
+    author_url = "https://github.com/baiyz0825"
     # 插件配置项 ID 前缀
     plugin_config_prefix = CONFIG_PREFIX
     # 加载顺序

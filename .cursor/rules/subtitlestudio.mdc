@@ -1,0 +1,15 @@
+---
+description: 字幕工坊双树与 MoviePilot V2/V3 插件硬约束
+alwaysApply: true
+---
+
+# 字幕工坊
+
+改本仓库前先读根目录 [AGENTS.md](../../AGENTS.md)。
+
+- 字幕只维护 `plugins.v2/subtitlestudio` 与 `plugins.v3/subtitlestudio`。产品改动两边一起做。不要恢复 AutoSubv3 / 海拉鲁 / 封面生成，也不要把它们写回 `package*.json`。
+- V2 版本 `1.x`，V3 版本 `2.x`，禁止共用版本号。
+- 领域代码行首禁止 `from app.`；V3 禁止 `SessionFactory` / `app.db.models` / `alias_httpx()`。
+- 虚拟分身用 `self.__class__.__name__`。Vue 用宿主注入的 `api` / `pluginId` / `sourcePluginId`。
+- 改 `src/` 后两边 `npm run build`，只提交 `dist/assets/`（不要 `dist/index.html`）。
+- 用户没要求就不要 commit / push。提交格式：`feat(subtitlestudio): --other=...`
