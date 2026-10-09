@@ -108,6 +108,11 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/check_plugin_versions.py package.json package.v2.json package.v3.json
 
+      - name: Check federation CSS
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/check_federation_css.py
+
       - name: Build and release plugins
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

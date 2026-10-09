@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, List
+from typing import ClassVar, List, Type
 
 from ..host import get_running_plugin
 
@@ -10,9 +10,9 @@ try:
     from app.agent.tools.base import MoviePilotTool
 except Exception:  # noqa: BLE001
     class MoviePilotTool:
-        name = ""
-        description = ""
-        args_schema = {}
+        name: str = ""
+        description: str = ""
+        args_schema = None
 
         async def run(self, **kwargs) -> str:
             return ""
@@ -24,15 +24,24 @@ except Exception:  # noqa: BLE001
 try:
     from pydantic import BaseModel, Field
 
+    class EmptyInput(BaseModel):
+        explanation: str = Field("", description="工具使用说明")
+
     class EnqueueInput(BaseModel):
+        explanation: str = Field("", description="工具使用说明")
         path: str = Field("", description="媒体文件路径")
         title: str = Field("", description="标题")
 except Exception:  # noqa: BLE001
-    EnqueueInput = {"path": "媒体文件路径", "title": "标题"}
+    class EmptyInput:
+        pass
+
+    class EnqueueInput:
+        pass
 
 
 class _StudioTool(MoviePilotTool):
-    # MoviePilotTool 是 Pydantic 模型，未标注的类属性会被当成字段，导入即失败。
+    # MoviePilotTool / langchain BaseTool 是 Pydantic 模型。
+    # name / description / args_schema 必须带字段标注；额外类属性必须 ClassVar。
     plugin_lookup_id: ClassVar[str] = "SubtitleStudio"
 
     def _plugin(self):
@@ -43,9 +52,9 @@ class _StudioTool(MoviePilotTool):
 
 
 class SubtitleStudioStatusTool(_StudioTool):
-    name = "subtitle_studio_status"
-    description = "查询字幕工坊队列状态"
-    args_schema = {}
+    name: str = "subtitle_studio_status"
+    description: str = "查询字幕工坊队列状态"
+    args_schema: Type[EmptyInput] = EmptyInput
 
     async def run(self, **kwargs) -> str:
         plugin = self._plugin()
@@ -56,9 +65,9 @@ class SubtitleStudioStatusTool(_StudioTool):
 
 
 class SubtitleStudioEnqueueTool(_StudioTool):
-    name = "subtitle_studio_enqueue"
-    description = "把一部媒体加入字幕工坊队列"
-    args_schema = EnqueueInput
+    name: str = "subtitle_studio_enqueue"
+    description: str = "把一部媒体加入字幕工坊队列"
+    args_schema: Type[EnqueueInput] = EnqueueInput
 
     async def run(self, path: str = "", title: str = "", **kwargs) -> str:
         plugin = self._plugin()

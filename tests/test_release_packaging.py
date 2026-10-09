@@ -58,6 +58,7 @@ def test_release_workflow_runs_packaging_script() -> None:
     script = ROOT / ".github/scripts/release_plugins.sh"
     assert script.is_file()
     assert "bash .github/scripts/release_plugins.sh" in workflow
+    assert "check_federation_css.py" in workflow
     assert "Diagnose environment" in workflow
     assert "workflow_dispatch" in workflow
     assert "paths:" not in workflow
@@ -67,6 +68,19 @@ def test_release_workflow_runs_packaging_script() -> None:
     assert "gh release create" in text
     assert "unzip -l" in text
     assert "api/__init__.py" in text
+
+
+def test_federation_css_gate_passes() -> None:
+    script = ROOT / ".github/scripts/check_federation_css.py"
+    assert script.is_file()
+    result = subprocess.run(
+        ["python3", str(script), "--root", str(ROOT)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "门禁通过" in result.stdout
 
 
 def test_requirements_do_not_ship_unused_webrtcvad() -> None:

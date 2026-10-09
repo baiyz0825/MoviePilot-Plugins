@@ -33,6 +33,8 @@ def test_v2_index_and_class_version_match():
 def test_v2_agent_tools_lookup_id_is_classvar():
     text = _source("automation/agent_tools.py")
     assert "plugin_lookup_id: ClassVar[str]" in text
+    assert "name: str =" in text
+    assert "args_schema: Type[" in text
     assert 'type(f"{plugin_id}StatusTool"' not in text
     module = load_plugin_package(GEN)
     tools = module.get_agent_tools("CloneStudio")

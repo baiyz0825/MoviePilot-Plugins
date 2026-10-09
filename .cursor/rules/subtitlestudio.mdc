@@ -11,5 +11,7 @@ alwaysApply: true
 - V2 版本 `1.x`，V3 版本 `2.x`，禁止共用版本号。
 - 领域代码行首禁止 `from app.`；V3 禁止 `SessionFactory` / `app.db.models` / `alias_httpx()`。
 - 虚拟分身用 `self.__class__.__name__`。Vue 用宿主注入的 `api` / `pluginId` / `sourcePluginId`。
-- 改 `src/` 后两边 `npm run build`，只提交 `dist/assets/`（不要 `dist/index.html`）。
+- `MoviePilotTool` 额外属性必须 `ClassVar`；`name` / `description` / `args_schema` 要有类型标注。
+- 改 `src/` 后两边 `npm run build`，只提交 `dist/assets/`（不要 `dist/index.html`）。构建后跑 `python .github/scripts/check_federation_css.py`。
+- 官方规范与已踩坑写在 [AGENTS.md](../../AGENTS.md)，不要另建 `agent.md`。
 - 用户没要求就不要 commit / push。提交格式：`feat(subtitlestudio): --other=...`

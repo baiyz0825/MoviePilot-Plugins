@@ -41,6 +41,7 @@ def test_app_page_matches_mobile_contract(gen: str = GEN):
     assert "ss-timeline" in page
     assert "PreviewPlayer" in page
     assert "sourcePluginId" in page
+    assert "navKey" in page
     assert "sourcePluginId" in _read("src/components/Config.vue", gen=gen)
     assert "sourcePluginId" in _read("src/components/Dashboard.vue", gen=gen)
     assert "watch_paths" not in page or True
