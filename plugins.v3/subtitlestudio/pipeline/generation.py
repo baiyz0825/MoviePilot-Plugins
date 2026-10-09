@@ -14,6 +14,7 @@ from ..core.cuegraph import parse_subtitle
 from ..core.format_repair import repair_asr_graph
 from ..core.logging import studio_done, studio_log, studio_step
 from ..core.models import CueGraph, Job
+from ..core.notify import should_notify
 from ..ingest.gates import is_strm_path
 from ..packager.export_pack import write_export_pack
 from ..storage.job_store import JobStore
@@ -62,16 +63,14 @@ class GenerationPipeline:
         if latest.payload.get("cancel"):
             latest.status = "cancelled"
             studio_log(self.logger, "info", "用户取消，停止处理 job=%s", latest.job_id)
-            studio_done(self.logger)
-            return self.store.save_job(latest)
+            return self._finish(latest, config, started)
         strategy = latest.strategy or config.get("transfer_strategy") or "search_then_translate"
         graph, asr_ran, asr_graph = self._resolve_source(latest, config, strategy)
         if graph is None:
             latest.status = "failed"
             latest.error = latest.error or "没有可用字幕源"
             studio_log(self.logger, "error", "没有可用字幕源 job=%s path=%s", latest.job_id, latest.path)
-            studio_done(self.logger)
-            return self.store.save_job(latest)
+            return self._finish(latest, config, started)
         studio_log(
             self.logger,
             "info",
@@ -93,8 +92,7 @@ class GenerationPipeline:
                 latest.error = "失败率过高，整片不写"
                 self.store.save_graph(graph)
                 studio_log(self.logger, "error", "失败率过高，整片不写 job=%s rate=%.1f%%", latest.job_id, rate * 100)
-                studio_done(self.logger)
-                return self.store.save_job(latest)
+                return self._finish(latest, config, started)
         else:
             studio_step(self.logger, 4, "跳过翻译 strategy=%s enabled=%s", strategy, config.get("translate_enabled", True))
         if config.get("effects_enabled"):
@@ -120,10 +118,17 @@ class GenerationPipeline:
                     studio_log(self.logger, "info", "写出 %s", item.get("filename"))
                 else:
                     studio_log(self.logger, "info", "跳过已存在 %s", item.get("filename"))
-        latest.status = "success"
+        refreshed = self.store.get_job(latest.job_id) or latest
+        if refreshed.payload.get("cancel"):
+            latest.payload = refreshed.payload
+            latest.status = "cancelled"
+        else:
+            latest.status = "success"
+        return self._finish(latest, config, started)
+
+    def _finish(self, latest: Job, config: Dict[str, Any], started: float) -> Job:
         saved = self.store.save_job(latest)
-        if config.get("send_notify") and self.notify:
-            self.notify(saved)
+        self._emit_notify(saved, config)
         studio_log(
             self.logger,
             "info",
@@ -135,6 +140,14 @@ class GenerationPipeline:
         )
         studio_done(self.logger)
         return saved
+
+    def _emit_notify(self, job: Job, config: Dict[str, Any]) -> None:
+        if not should_notify(config, job) or not self.notify:
+            return
+        try:
+            self.notify(job)
+        except Exception as exc:  # noqa: BLE001 — 通知失败不能把任务改成失败
+            studio_log(self.logger, "warning", "通知推送失败 job=%s：%s", job.job_id, exc)
 
     def _resolve_source(self, job: Job, config: Dict[str, Any], strategy: str):
         asr_ran = False

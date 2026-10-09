@@ -10,7 +10,10 @@ from typing import Any, Dict, Iterable, Tuple
 CHINESE_LANGS = {"zh", "cn", "zho", "cmn", "yue", "chi", "cht", "zh-hans", "zh-hant"}
 CHINESE_COUNTRIES = {"cn", "hk", "tw", "sg", "china", "hong kong", "taiwan", "singapore", "中国", "大陆", "香港", "台湾"}
 CHINESE_NAME = re.compile(r"华语|国产|大陆|内地|港剧|台剧|港片|中国")
-CHINESE_SUB_NAME = re.compile(r"[.\-_](zh|chi|chs|cht|cn|zh-hans|zh-hant|chi&eng)([.\-_]|$)", re.I)
+CHINESE_SUB_NAME = re.compile(
+    r"[.\-_](zh|chi|chs|cht|cn|zh-hans|zh-hant|zh-cn|zh-tw|chi&eng|chs&eng)([.\-_]|$)",
+    re.I,
+)
 SUB_EXTS = {".srt", ".ass", ".ssa", ".vtt", ".webvtt"}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".ts", ".m2ts", ".mov", ".wmv", ".m4v", ".flv", ".webm"}
 STRM_EXT = ".strm"

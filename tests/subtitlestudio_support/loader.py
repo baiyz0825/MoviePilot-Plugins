@@ -103,6 +103,9 @@ def install_app_stubs(generation: str = "v2") -> None:
         TransferComplete = "transfer.complete"
         PluginAction = "plugin.action"
 
+    class NotificationType:
+        Plugin = "Plugin"
+
     ensure("app.plugins", _PluginBase=PluginBase)
     ensure("app.sdk.plugin", _PluginBase=PluginBase)
     ensure("app.core.config", settings=types.SimpleNamespace(RMT_MEDIAEXT=[".mp4", ".mkv", ".strm"], PROXY=None))
@@ -111,7 +114,9 @@ def install_app_stubs(generation: str = "v2") -> None:
     ensure("app.sdk.logging", logger=types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None, error=lambda *a, **k: None))
     ensure("app.core.event", eventmanager=EventManager(), Event=object)
     ensure("app.sdk.events", eventmanager=EventManager(), Event=object, EventType=EventType)
-    ensure("app.schemas.types", EventType=EventType)
+    ensure("app.schemas.types", EventType=EventType, NotificationType=NotificationType)
+    ensure("app.sdk.schema", NotificationType=NotificationType)
+    ensure("app.sdk.schemas", NotificationType=NotificationType)
     ensure("app.schemas", Response=dict)
     ensure("app.core.plugin", PluginManager=None)
     ensure("app.sdk.plugins", PluginManager=None)

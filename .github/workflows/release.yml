@@ -20,7 +20,7 @@ on:
         required: false
         default: ""
       plugin_id:
-        description: Optional plugin id to package, for example SubtitleManualUpload.
+        description: Optional plugin id to package, for example SubtitleStudio.
         required: false
         default: ""
       force:

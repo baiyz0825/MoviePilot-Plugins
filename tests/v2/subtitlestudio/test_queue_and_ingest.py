@@ -48,6 +48,37 @@ def test_job_store_cut_in_does_not_touch_running(tmp_path: Path, gen: str = GEN)
     assert running and running.job_id == first.job_id
 
 
+def test_scheduler_notifies_skipped_and_cancelled(tmp_path: Path, gen: str = GEN):
+    store_mod = load_domain(gen, "storage.job_store")
+    sched_mod = load_domain(gen, "pipeline.scheduler")
+    gates = load_domain(gen, "ingest.gates")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    notices = []
+    video = tmp_path / "Dune.mkv"
+    video.write_bytes(b"x" * 20 * 1024 * 1024)
+    (tmp_path / "Dune.zh-Hans.srt").write_text("1", encoding="utf-8")
+    config = {
+        "send_notify": True,
+        "notify_on": ["skipped", "cancelled"],
+        "skip_existing_chinese": True,
+        "min_file_mb": 10,
+    }
+    scheduler = sched_mod.JobScheduler(store, lambda job: None, notify=notices.append)
+    scheduler.config_getter = lambda: config
+    skipped = scheduler.enqueue(title="Dune", path=str(video), trigger="event", config=config)
+    assert skipped.status == "skipped"
+    assert "中字" in (skipped.error or "")
+    assert [item.status for item in notices] == ["skipped"]
+    ok, reason = gates.evaluate_gates(scheduler.config_getter(), str(video), {})
+    assert ok is False and "中字" in reason
+
+    notices.clear()
+    pending = scheduler.enqueue(title="Other", path=str(tmp_path / "Other.mkv"), trigger="manual", force=True)
+    cancelled = scheduler.cancel(pending.job_id)
+    assert cancelled.status == "cancelled"
+    assert [item.status for item in notices] == ["cancelled"]
+
+
 def test_offpeak_window_cross_midnight(gen: str = GEN):
     sched = load_domain(gen, "pipeline.scheduler")
     window = sched.parse_offpeak_window("22:00-06:00")

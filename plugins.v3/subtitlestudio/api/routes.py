@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from ..core.config_schema import FIELDS, PANES, apply_export_preset, default_config, normalize_plugin_config
 from ..core.cuegraph import render_ass
+from ..core.style import style_from_config
 from ..core.history import group_media_items
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
 from ..core.response import fail, ok
@@ -271,7 +272,12 @@ class StudioApiMixin:
         graph = self.services.store.get_graph(job_id)
         config = normalize_plugin_config(self.get_config() or {})
         langs = list(config.get("target_languages") or ["zh-Hans"])
-        text = render_ass(graph, langs, stack=config.get("lang_stack") or "main_bottom") if graph else ""
+        text = render_ass(
+            graph,
+            langs,
+            stack=config.get("lang_stack") or "main_bottom",
+            style=style_from_config(config),
+        ) if graph else ""
         return _plain_response(text, "text/plain; charset=utf-8")
 
     def api_preview_video(self, job_id: str, request=None):

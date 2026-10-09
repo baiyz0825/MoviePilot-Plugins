@@ -179,6 +179,29 @@ def plugin_action_type():
     return getattr(EventType, "PluginAction", "plugin.action")
 
 
+def plugin_notification_type():
+    """通知类型用「插件」，用户在 MoviePilot 通知设置里按这个开关渠道。"""
+    try:
+        from app.schemas.types import NotificationType
+        return getattr(NotificationType, "Plugin", None)
+    except Exception:
+        return None
+
+
+def deliver_notice(plugin, payload: Dict[str, Any]) -> None:
+    """走基类 post_message，由宿主分发到已启用的通知渠道。"""
+    kwargs: Dict[str, Any] = {
+        "title": payload.get("title") or "字幕工坊",
+        "text": payload.get("text") or "",
+    }
+    if payload.get("image"):
+        kwargs["image"] = payload["image"]
+    mtype = plugin_notification_type()
+    if mtype is not None:
+        kwargs["mtype"] = mtype
+    plugin.post_message(**kwargs)
+
+
 def load_transfer_history(limit: int = 800) -> List[Dict[str, Any]]:
     """读 MoviePilot 本地整理记录。和海拉鲁同一入口，不是 Emby 媒体库 API。"""
     from .core.history import history_object_to_dict

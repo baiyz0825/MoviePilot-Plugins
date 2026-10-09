@@ -34,7 +34,7 @@ class StudioServices:
         def runner(job):
             pipeline.run(job)
 
-        self.scheduler = JobScheduler(self.store, runner, logger=plugin.host_logger)
+        self.scheduler = JobScheduler(self.store, runner, logger=plugin.host_logger, notify=plugin.notify_job)
         self.scheduler.config_getter = plugin.current_config
         pipeline = GenerationPipeline(
             self.store,

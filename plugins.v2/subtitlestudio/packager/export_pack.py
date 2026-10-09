@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 from ..core.cuegraph import render_ass, render_srt, render_vtt, stacked_plain
 from ..core.models import Cue, CueGraph
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
+from ..core.style import style_from_config
 
 
 WriteFn = Callable[[Path, bytes], None]
@@ -27,12 +28,12 @@ def _encode(text: str, encoding: str) -> bytes:
     return text.encode("utf-8")
 
 
-def _render_dialogue(graph: CueGraph, plan: Dict[str, Any]) -> str:
+def _render_dialogue(graph: CueGraph, plan: Dict[str, Any], style: Dict[str, Any] | None = None) -> str:
     langs = list(plan.get("langs") or [])
     fmt = plan.get("format")
     stack = plan.get("stack") or "main_bottom"
     if fmt == "ass":
-        return render_ass(graph, langs, sizes=plan.get("sizes"), stack=stack, include_notes=False)
+        return render_ass(graph, langs, sizes=plan.get("sizes"), stack=stack, include_notes=False, style=style)
     lang = langs[0] if langs else "source"
     if plan.get("layout") == "stacked" and len(langs) > 1:
         clone = CueGraph(
@@ -55,9 +56,9 @@ def _render_dialogue(graph: CueGraph, plan: Dict[str, Any]) -> str:
     return render_srt(graph, lang) if fmt == "srt" else render_vtt(graph, lang)
 
 
-def _render_notes(graph: CueGraph, plan: Dict[str, Any]) -> str:
+def _render_notes(graph: CueGraph, plan: Dict[str, Any], style: Dict[str, Any] | None = None) -> str:
     notes_only = CueGraph(job_id=graph.job_id, notes=list(graph.notes), duration_ms=graph.duration_ms)
-    return render_ass(notes_only, plan.get("langs") or ["zh-Hans"], include_notes=True, title="notes")
+    return render_ass(notes_only, plan.get("langs") or ["zh-Hans"], include_notes=True, title="notes", style=style)
 
 
 def _render_sdh(graph: CueGraph, plan: Dict[str, Any]) -> str:
@@ -70,17 +71,23 @@ def _render_sdh(graph: CueGraph, plan: Dict[str, Any]) -> str:
     return render_srt(sdh, lang, fallback_lang=graph.source_lang)
 
 
-def render_plan_text(graph: CueGraph, plan: Dict[str, Any], *, asr_graph: Optional[CueGraph] = None) -> str:
+def render_plan_text(
+    graph: CueGraph,
+    plan: Dict[str, Any],
+    *,
+    asr_graph: Optional[CueGraph] = None,
+    style: Dict[str, Any] | None = None,
+) -> str:
     kind = plan.get("kind") or "dialogue"
     if kind == "notes":
-        return _render_notes(graph, plan)
+        return _render_notes(graph, plan, style)
     if kind == "sdh":
         return _render_sdh(graph, plan)
     if kind == "asr":
         source = asr_graph or graph
         lang = (plan.get("langs") or [source.source_lang])[0]
         return render_srt(source, lang, fallback_lang=source.source_lang)
-    return _render_dialogue(graph, plan)
+    return _render_dialogue(graph, plan, style)
 
 
 def build_export_manifest(
@@ -118,7 +125,7 @@ def write_export_pack(
         if existed and policy == "backup":
             backup = target.with_suffix(target.suffix + ".bak")
             shutil.copy2(target, backup)
-        text = render_plan_text(graph, plan, asr_graph=asr_graph)
+        text = render_plan_text(graph, plan, asr_graph=asr_graph, style=style_from_config(config))
         payload = _encode(text, encoding)
         if write:
             write(target, payload)

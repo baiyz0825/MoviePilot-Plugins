@@ -20,6 +20,10 @@ def test_config_defaults_and_language_limit():
     shared.test_config_defaults_and_language_limit(gen="v3")
 
 
+def test_notify_payload_and_gating():
+    shared.test_notify_payload_and_gating(gen="v3")
+
+
 def test_cuegraph_roundtrip_and_ass_styles():
     shared.test_cuegraph_roundtrip_and_ass_styles(gen="v3")
 
@@ -34,6 +38,10 @@ def test_asr_repair_drops_empty_and_fixes_overlap():
 
 def test_export_plan_cartesian_and_extras():
     shared.test_export_plan_cartesian_and_extras(gen="v3")
+
+
+def test_export_plan_uses_player_language_tags():
+    shared.test_export_plan_uses_player_language_tags(gen="v3")
 
 
 def test_packager_writes_and_skip_policy(tmp_path):

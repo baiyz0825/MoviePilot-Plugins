@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { LANGS, PANES, PRESETS, applyPreset, exportPreview, langLabel, sizeForRank } from '../../composables/fields'
+import { LANGS, PANES, PRESETS, STYLE_FONTS, STYLE_LOOKS, applyPreset, exportPreview, langLabel, normalizeStyle, overlayCss, sizeForRank } from '../../composables/fields'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -19,7 +19,11 @@ watch(config, () => emit('dirty', true), { deep: true })
 
 const grouped = computed(() => {
   const rows = props.fields.length ? props.fields : fallbackFields()
-  return rows.filter(item => item.pane === pane.value && item.mock !== 'skip')
+  return rows.filter(item => {
+    if (item.pane !== pane.value || item.mock === 'skip') return false
+    if (item.key === 'notify_on' && !config.value.send_notify) return false
+    return true
+  })
 })
 
 function setField(key, value) {
@@ -52,6 +56,47 @@ function usePreset(value) {
   config.value = applyPreset(config.value, value)
 }
 
+const assStyle = computed(() => normalizeStyle(config.value.ass_style))
+
+function setStyle(patch) {
+  const next = { ...assStyle.value, ...patch }
+  if (Array.isArray(patch.sizes)) next.sizes = [...patch.sizes]
+  setField('ass_style', next)
+}
+
+function setStyleSize(index, value) {
+  const sizes = [...assStyle.value.sizes]
+  sizes[index] = Number(value)
+  setStyle({ sizes })
+}
+
+function useStyleLook(look) {
+  setStyle(look.patch)
+}
+
+function ensureAssFormat() {
+  const formats = [...(config.value.export_formats || [])]
+  if (!formats.includes('ass')) formats.push('ass')
+  setField('export_formats', formats)
+}
+
+const stylePreview = computed(() => {
+  const stack = config.value.lang_stack || 'main_bottom'
+  const langs = config.value.target_languages || ['zh-Hans']
+  return {
+    stack,
+    langs,
+    main: overlayCss(assStyle.value, 0),
+    second: overlayCss(assStyle.value, 1),
+    third: overlayCss(assStyle.value, 2),
+    note: overlayCss(assStyle.value, 0, 'note'),
+    mainBottom: `${assStyle.value.margin_v}px`,
+    secondBottom: `${assStyle.value.margin_v + assStyle.value.line_gap}px`,
+    thirdBottom: `${assStyle.value.margin_v + assStyle.value.line_gap * 2}px`,
+    noteTop: `${Math.max(12, assStyle.value.margin_v - 4)}px`,
+  }
+})
+
 function addEndpoint() {
   const rows = [...(config.value.openai_endpoints || [])]
   rows.push({
@@ -82,7 +127,10 @@ function fallbackFields() {
   return [
     { pane: 'basic', key: 'enabled', label: '启用插件', control: 'switch', purpose: '插件总闸。', after: '开：接新活。关：不接新任务。' },
     { pane: 'basic', key: 'show_sidebar_nav', label: '显示侧栏入口', control: 'switch', purpose: '侧栏放字幕工坊。', after: '关了只能从插件管理进。' },
-    { pane: 'basic', key: 'send_notify', label: '任务完成通知', control: 'switch', purpose: '走 MoviePilot 通知。', after: '默认关，避免剧集刷屏。' },
+    { pane: 'basic', key: 'send_notify', label: '任务完成通知', control: 'switch', purpose: '走 MoviePilot 已配置的通知渠道（类型：插件）。', after: '默认关，避免剧集刷屏。渠道在 MoviePilot「通知」里启用。' },
+    { pane: 'basic', key: 'notify_on', label: '通知哪些结果', control: 'multi', options: [
+      { title: '成功', value: 'success' }, { title: '失败', value: 'failed' }, { title: '跳过', value: 'skipped' }, { title: '取消', value: 'cancelled' },
+    ], purpose: '总开关打开后，哪些终态要推送。', after: '默认成功和失败。剧集建议只勾失败。' },
     { pane: 'ingest', key: 'ingest_on_event', label: '整理完成事件入队', control: 'switch', purpose: '听 TransferComplete。', after: '默认开，和目录监控互不影响。' },
     { pane: 'ingest', key: 'ingest_on_watch', label: '媒体目录监控入队', control: 'switch', purpose: '盯媒体库目录。', after: '默认关。' },
     { pane: 'ingest', key: 'watch_paths', label: '监控的媒体目录', control: 'textarea', rows: 4, purpose: '一行一条路径。', after: '真实换行，不要写字面 \\n。', placeholder: '/media/movies\n/media/tv' },
@@ -121,6 +169,7 @@ function fallbackFields() {
       { title: '跳过', value: 'skip' }, { title: '备份后替换', value: 'backup' }, { title: '直接覆盖', value: 'overwrite' },
     ] },
     { pane: 'export', key: 'enable_sdh', label: '写出 SDH 轨', control: 'switch' },
+    { pane: 'export', key: 'ass_style', label: '字幕样式', control: 'style-editor', purpose: 'ASS 对白和顶注的字体、颜色、主/次字号。', after: '改完即时预览。字体颜色只写入 ASS。' },
     { pane: 'effects', key: 'effects_enabled', label: '支持特效字幕', control: 'switch' },
     { pane: 'effects', key: 'effects_keep_downloaded', label: '保留下载的解说 / 屏字', control: 'switch' },
     { pane: 'effects', key: 'effects_character_briefs', label: '人物 / 专名背景顶注', control: 'switch' },
@@ -235,7 +284,7 @@ const files = computed(() => exportPreview(config.value))
           <div v-else-if="field.control === 'preset'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
             <VRow dense>
-              <VCol v-for="item in PRESETS" :key="item.value" cols="12" md="3">
+              <VCol v-for="item in PRESETS" :key="item.value" cols="12" md="4">
                 <VCard class="ss-card" :color="config.export_preset === item.value ? 'primary' : undefined" variant="tonal" @click="usePreset(item.value)">
                   <VCardTitle class="text-subtitle-1">{{ item.title }}</VCardTitle>
                   <VCardText>{{ item.hint }}</VCardText>
@@ -246,7 +295,7 @@ const files = computed(() => exportPreview(config.value))
           <div v-else-if="field.control === 'lang-order'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
             <div v-for="(lang, index) in config.target_languages || []" :key="lang" class="d-flex align-center ga-2 mb-2">
-              <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ sizeForRank(index) }}px</VChip>
+              <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ sizeForRank(index, assStyle) }}px</VChip>
               <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveLang(index, -1)" />
               <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveLang(index, 1)" />
               <VBtn icon="mdi-close" size="small" class="ss-touch" @click="toggleList('target_languages', lang)" />
@@ -282,6 +331,106 @@ const files = computed(() => exportPreview(config.value))
                 <VBtn size="small" class="ss-touch" @click="$emit('list-models', endpoint)">拉模型</VBtn>
               </div>
             </VCard>
+          </div>
+          <div v-else-if="field.control === 'style-editor'" class="ss-style-editor">
+            <div class="text-body-2 mb-2">{{ field.label }}</div>
+            <div class="d-flex flex-wrap ga-2 mb-3">
+              <VChip
+                v-for="look in STYLE_LOOKS"
+                :key="look.title"
+                class="ss-touch"
+                @click="useStyleLook(look)"
+              >
+                {{ look.title }}
+              </VChip>
+            </div>
+            <div class="ss-style-preview mb-4" :class="{ 'ss-style-preview--top': stylePreview.stack === 'main_top' }">
+              <div class="ss-style-preview__note" :style="{ ...stylePreview.note, top: stylePreview.noteTop }">钢铁侠 / 托尼·斯塔克</div>
+              <div
+                v-if="stylePreview.langs[2]"
+                class="ss-style-preview__line"
+                :style="{ ...stylePreview.third, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.thirdBottom, top: stylePreview.stack === 'main_top' ? stylePreview.mainBottom : 'auto' }"
+              >
+                三语小字
+              </div>
+              <div
+                v-if="stylePreview.langs[1]"
+                class="ss-style-preview__line"
+                :style="{ ...stylePreview.second, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.secondBottom, top: stylePreview.stack === 'main_top' ? stylePreview.secondBottom : 'auto' }"
+              >
+                Secondary line
+              </div>
+              <div
+                class="ss-style-preview__line"
+                :style="{ ...stylePreview.main, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.mainBottom, top: stylePreview.stack === 'main_top' ? stylePreview.thirdBottom : 'auto' }"
+              >
+                这是主字幕
+              </div>
+            </div>
+            <VRow dense>
+              <VCol cols="12" md="6">
+                <VSelect
+                  :model-value="assStyle.font_name"
+                  :items="STYLE_FONTS"
+                  label="字体"
+                  @update:model-value="setStyle({ font_name: $event })"
+                />
+              </VCol>
+              <VCol cols="12" md="6">
+                <VTextField
+                  :model-value="assStyle.font_name"
+                  label="自定义字体名"
+                  @update:model-value="setStyle({ font_name: $event })"
+                />
+              </VCol>
+              <VCol cols="6" md="4">
+                <label class="ss-color-field">
+                  <span>对白颜色</span>
+                  <input type="color" class="ss-color-input" :value="assStyle.primary_color" @input="setStyle({ primary_color: $event.target.value })">
+                </label>
+              </VCol>
+              <VCol cols="6" md="4">
+                <label class="ss-color-field">
+                  <span>描边颜色</span>
+                  <input type="color" class="ss-color-input" :value="assStyle.outline_color" @input="setStyle({ outline_color: $event.target.value })">
+                </label>
+              </VCol>
+              <VCol cols="6" md="4">
+                <label class="ss-color-field">
+                  <span>顶注颜色</span>
+                  <input type="color" class="ss-color-input" :value="assStyle.note_color" @input="setStyle({ note_color: $event.target.value })">
+                </label>
+              </VCol>
+              <VCol cols="4">
+                <VTextField :model-value="assStyle.sizes[0]" type="number" label="主字号" @update:model-value="setStyleSize(0, $event)" />
+              </VCol>
+              <VCol cols="4">
+                <VTextField :model-value="assStyle.sizes[1]" type="number" label="次行小字" @update:model-value="setStyleSize(1, $event)" />
+              </VCol>
+              <VCol cols="4">
+                <VTextField :model-value="assStyle.sizes[2]" type="number" label="第三行" @update:model-value="setStyleSize(2, $event)" />
+              </VCol>
+              <VCol cols="6" md="3">
+                <VTextField :model-value="assStyle.note_size" type="number" label="顶注字号" @update:model-value="setStyle({ note_size: Number($event) })" />
+              </VCol>
+              <VCol cols="6" md="3">
+                <VTextField :model-value="assStyle.outline" type="number" label="描边" @update:model-value="setStyle({ outline: Number($event) })" />
+              </VCol>
+              <VCol cols="6" md="3">
+                <VTextField :model-value="assStyle.shadow" type="number" label="阴影" @update:model-value="setStyle({ shadow: Number($event) })" />
+              </VCol>
+              <VCol cols="6" md="3">
+                <VTextField :model-value="assStyle.margin_v" type="number" label="底边距" @update:model-value="setStyle({ margin_v: Number($event) })" />
+              </VCol>
+            </VRow>
+            <div class="d-flex flex-wrap ga-2">
+              <VSwitch :model-value="assStyle.bold" label="粗体" hide-details @update:model-value="setStyle({ bold: $event })" />
+              <VSwitch :model-value="assStyle.italic" label="斜体" hide-details @update:model-value="setStyle({ italic: $event })" />
+            </div>
+            <VAlert v-if="!(config.export_formats || []).includes('ass')" type="warning" variant="tonal" class="mt-3">
+              字体和颜色只写入 ASS。当前没勾 ASS，播放器会用自己的字体。
+            </VAlert>
+            <VBtn v-if="!(config.export_formats || []).includes('ass')" size="small" class="ss-touch mt-2" @click="ensureAssFormat">同时写出 ASS</VBtn>
           </div>
           <div class="ss-help">{{ field.purpose }} {{ field.after }}</div>
         </div>

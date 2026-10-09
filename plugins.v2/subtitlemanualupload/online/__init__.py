@@ -1,1 +1,0 @@
-"""Online subtitle orchestration adapters."""

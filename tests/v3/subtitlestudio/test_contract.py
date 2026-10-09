@@ -86,6 +86,29 @@ def test_official_hooks_exist():
     assert defaults["ingest_on_event"] is True
     assert defaults["target_languages"] == ["zh-Hans"]
     assert plugin.get_command()[0]["cmd"] == "/subtitle_studio_run"
+    assert defaults["send_notify"] is False
+    assert defaults["notify_on"] == ["success", "failed"]
     paths = [item["path"] for item in plugin.get_api()]
     assert "/jobs" in paths
     assert "/jobs/{job_id}/preview/video" in paths
+
+
+def test_notify_job_uses_plugin_channel():
+    module = load_plugin_package(GEN)
+    plugin = module.SubtitleStudio()
+    sent = []
+    plugin.post_message = lambda **kwargs: sent.append(kwargs)
+    from tests.subtitlestudio_support.loader import load_domain
+    job = load_domain(GEN, "core.models").Job(
+        job_id="n1",
+        title="沙丘",
+        path="/media/Dune.mkv",
+        status="failed",
+        trigger="event",
+        error="没有可用字幕源",
+    )
+    plugin.notify_job(job)
+    assert sent
+    assert sent[0]["title"] == "字幕工坊 · 失败"
+    assert "没有可用字幕源" in sent[0]["text"]
+    assert sent[0]["mtype"] == "Plugin"

@@ -78,6 +78,30 @@ def test_official_hooks_exist():
     assert any(item["path"] == "/jobs" for item in plugin.get_api())
     assert any(item["path"] == "/jobs/{job_id}/preview/ass" for item in plugin.get_api())
     assert plugin.get_page() == []
+    assert defaults["send_notify"] is False
+    assert defaults["notify_on"] == ["success", "failed"]
+
+
+def test_notify_job_uses_plugin_channel():
+    module = load_plugin_package(GEN)
+    plugin = module.SubtitleStudio()
+    sent = []
+    plugin.post_message = lambda **kwargs: sent.append(kwargs)
+    from tests.subtitlestudio_support.loader import load_domain
+    job = load_domain(GEN, "core.models").Job(
+        job_id="n1",
+        title="沙丘",
+        path="/media/Dune.mkv",
+        status="success",
+        trigger="manual",
+        payload={"export": [{"written": True, "filename": "Dune.default.chi.zh-cn.srt"}], "poster": "http://p"},
+    )
+    plugin.notify_job(job)
+    assert sent
+    assert sent[0]["title"] == "字幕工坊 · 完成"
+    assert "Dune.default.chi.zh-cn.srt" in sent[0]["text"]
+    assert sent[0]["image"] == "http://p"
+    assert sent[0]["mtype"] == "Plugin"
 
 
 def test_sidebar_nav_requires_enabled():

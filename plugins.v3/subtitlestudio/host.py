@@ -206,6 +206,33 @@ def plugin_action_type():
     return getattr(EventType, "PluginAction", "plugin.action")
 
 
+def plugin_notification_type():
+    """V3 优先 SDK schema，退回宿主 types。"""
+    for module_name in ("app.sdk.schema", "app.sdk.schemas", "app.schemas.types"):
+        try:
+            module = __import__(module_name, fromlist=["NotificationType"])
+            enum = getattr(module, "NotificationType", None)
+            if enum is not None:
+                return getattr(enum, "Plugin", None)
+        except Exception:
+            continue
+    return None
+
+
+def deliver_notice(plugin, payload: Dict[str, Any]) -> None:
+    """走基类 post_message / 宿主通知渠道。"""
+    kwargs: Dict[str, Any] = {
+        "title": payload.get("title") or "字幕工坊",
+        "text": payload.get("text") or "",
+    }
+    if payload.get("image"):
+        kwargs["image"] = payload["image"]
+    mtype = plugin_notification_type()
+    if mtype is not None:
+        kwargs["mtype"] = mtype
+    plugin.post_message(**kwargs)
+
+
 def load_transfer_history(limit: int = 800) -> List[Dict[str, Any]]:
     """V3 整理记录必须自己拿 Session，不能把 None 传给模型。"""
     from .core.history import history_object_to_dict

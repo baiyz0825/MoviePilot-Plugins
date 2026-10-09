@@ -13,5 +13,9 @@ def test_generation_writes_step_logs(tmp_path):
     shared.test_generation_writes_step_logs(tmp_path, gen="v3")
 
 
+def test_generation_notifies_success_and_failure(tmp_path):
+    shared.test_generation_notifies_success_and_failure(tmp_path, gen="v3")
+
+
 def test_effects_character_brief_is_top_note():
     shared.test_effects_character_brief_is_top_note(gen="v3")

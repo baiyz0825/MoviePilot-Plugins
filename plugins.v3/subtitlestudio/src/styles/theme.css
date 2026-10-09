@@ -83,6 +83,47 @@
 .plugin-root .ss-overlay.dialogue.rank3 { bottom: 72px; font-size: 14px; }
 .plugin-root .ss-overlay.note { top: 16px; font-size: 16px; color: #b4e0ff; }
 
+.plugin-root .ss-style-preview {
+  position: relative;
+  min-height: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.2), rgba(2, 6, 23, 0.55)),
+    radial-gradient(circle at 30% 20%, #1e293b, #020617 70%);
+}
+
+.plugin-root .ss-style-preview__line,
+.plugin-root .ss-style-preview__note {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.25;
+}
+
+.plugin-root .ss-style-preview__note {
+  top: 16px;
+}
+
+.plugin-root .ss-color-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.plugin-root .ss-color-input {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ss-border);
+  border-radius: 8px;
+  background: transparent;
+}
+
 .plugin-root .ss-savebar {
   position: sticky;
   bottom: 0;

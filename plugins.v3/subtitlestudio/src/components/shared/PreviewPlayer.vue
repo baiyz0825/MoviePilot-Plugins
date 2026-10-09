@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { overlayCss } from '../../composables/fields'
 
 const props = defineProps({
   graph: { type: Object, default: () => ({ cues: [], notes: [] }) },
@@ -9,6 +10,7 @@ const props = defineProps({
   stack: { type: String, default: 'main_bottom' },
   videoUrl: { type: String, default: '' },
   enabled: { type: Boolean, default: true },
+  styleConfig: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits(['time'])
@@ -23,6 +25,15 @@ const notes = computed(() => active.value.filter(item => item.kind === 'note'))
 
 function textOf(cue, lang) {
   return cue?.texts?.[lang] || cue?.texts?.source || Object.values(cue?.texts || {})[0] || ''
+}
+
+function lineStyle(index, kind = 'dialogue') {
+  const css = overlayCss(props.styleConfig, index, kind)
+  if (kind === 'note') return css
+  if (props.stack === 'main_top' && index === 0) {
+    return { ...css, top: '72px', bottom: 'auto' }
+  }
+  return css
 }
 
 function onTime(event) {
@@ -41,6 +52,7 @@ function onTime(event) {
       v-for="note in notes"
       :key="note.cue_id"
       class="ss-overlay note"
+      :style="lineStyle(0, 'note')"
     >
       {{ textOf(note) }}
     </div>
@@ -50,7 +62,7 @@ function onTime(event) {
         :key="lang"
         class="ss-overlay dialogue"
         :class="[`rank${index + 1}`]"
-        :style="stack === 'main_top' && index === 0 ? { top: '72px', bottom: 'auto' } : {}"
+        :style="lineStyle(index)"
       >
         {{ dialogue.map(item => textOf(item, lang)).filter(Boolean).join(' ') }}
       </div>

@@ -11,7 +11,8 @@ import uuid
 from typing import Any, Dict, List, Tuple
 
 from .models import Endpoint, FORMATS, LAYOUTS, STRATEGIES
-from .naming import apply_preset, validate_target_languages
+from .naming import PRESET_IDS, apply_preset, validate_target_languages
+from .style import DEFAULT_ASS_STYLE, normalize_ass_style
 from .paths import join_multiline_paths, parse_multiline_paths
 
 PLUGIN_ID = "SubtitleStudio"
@@ -62,8 +63,14 @@ FIELDS: List[Dict[str, Any]] = [
      "purpose": "在 MoviePilot 侧栏放「字幕工坊」。",
      "after": "开：侧栏直接进四个一级页。关：只能从插件管理打开。不影响已经在跑的任务。"},
     {"pane": "basic", "group": "基础", "key": "send_notify", "label": "任务完成通知", "control": "switch", "default": False,
-     "purpose": "成功、失败时走 MoviePilot 通知渠道。",
-     "after": "开：每个任务结束推一条。关：只在队列页看结果，避免剧集刷屏。"},
+     "purpose": "走 MoviePilot 已配置的通知渠道（类型：插件）。",
+     "after": "开：按下面勾选的结果推送。关（默认）：只在队列页看结果，避免剧集刷屏。渠道在 MoviePilot「通知」里启用，并允许「插件」类型。"},
+    {"pane": "basic", "group": "基础", "key": "notify_on", "label": "通知哪些结果", "control": "multi",
+     "default": ["success", "failed"],
+     "options": [{"title": "成功", "value": "success"}, {"title": "失败", "value": "failed"},
+                 {"title": "跳过", "value": "skipped"}, {"title": "取消", "value": "cancelled"}],
+     "purpose": "总开关打开后，哪些终态要推送。",
+     "after": "默认成功和失败。跳过：门禁没过（已有中字、中文片等）。取消：队列里点了取消。剧集建议只勾失败。"},
     {"pane": "ingest", "group": "入库", "key": "ingest_on_event", "label": "整理完成事件入队", "control": "switch", "default": True,
      "purpose": "听 TransferComplete。整理完成就建任务。这是默认的自动入队方式，比扫盘轻。",
      "after": "开（默认）：新入库按下面策略入队，优先级 P1。关：事件不再入队。和「目录监控」互不影响，可以只开这个。"},
@@ -135,11 +142,11 @@ FIELDS: List[Dict[str, Any]] = [
      "purpose": "OpenSubtitles 的钥匙。", "after": "不填则该源是灰的。"},
     {"pane": "export", "group": "导出", "key": "export_preset", "label": "导出预设", "control": "preset", "default": "library_zh",
      "purpose": "一键改语言码、是否 default、默认勾哪些格式。",
-     "after": "点预设会改下面的默认勾选，仍可手改。媒体库：zh-Hans + default。Plex：chi，无 default。网页：再勾 VTT。旧库：chi / chi&eng。"},
+     "after": "点预设会改语言码和默认勾选，仍可手改。媒体库对齐 MoviePilot 整理：Movie.default.chi.zh-cn.srt。Plex 用 chi/eng。飞牛用 chs。Infuse/网页用 zh-CN 并勾 VTT。旧库用 chi / chi&eng。"},
     {"pane": "export", "group": "导出", "key": "target_languages", "label": "目标语种（有序，1–3）", "control": "lang-order",
      "default": ["zh-Hans"],
      "purpose": "这次要生成哪些文种。最少 1 个，最多 3 个。列表顺序就是主、次、再次。",
-     "after": "第 1 位：主语种，字号最大。第 2 位约 78%。第 3 位约 64%。不能全空。"},
+     "after": "第 1 位用主字号，第 2 / 3 位用叠行小字。具体大小、颜色在下面「字幕样式」改。不能全空。"},
     {"pane": "export", "group": "导出", "key": "lang_stack", "label": "叠行位置", "control": "select", "default": "main_bottom",
      "options": [{"title": "主下小上", "value": "main_bottom"}, {"title": "主上小下", "value": "main_top"}],
      "purpose": "多个语种叠在同一屏时，大和小谁在上。",
@@ -154,7 +161,7 @@ FIELDS: List[Dict[str, Any]] = [
      "after": "SRT：电视和媒体库最稳。ASS：对白要样式或换色双语。VTT：Infuse/网页。特效 notes.ass、SDH、ASR 原轨不走这个乘法。"},
     {"pane": "export", "group": "导出", "key": "mark_default", "label": "主中文标 default", "control": "switch", "default": True,
      "purpose": "文件名加 .default，让播放器默认选中文轨。",
-     "after": "开：Emby/Jellyfin 会当默认字幕。Plex 不认这个标记，Plex 预设会关掉。"},
+     "after": "开：按 MoviePilot 习惯写成 .default.chi.zh-cn，Emby/Jellyfin 会当默认字幕。Plex 和飞牛不认这个标记，对应预设会关掉。"},
     {"pane": "export", "group": "导出", "key": "encoding", "label": "文件编码", "control": "select", "default": "utf-8",
      "options": [{"title": "UTF-8", "value": "utf-8"}, {"title": "UTF-8 BOM", "value": "utf-8-sig"},
                  {"title": "GB18030", "value": "gb18030"}],
@@ -168,6 +175,10 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "export", "group": "导出", "key": "enable_sdh", "label": "写出 SDH 轨", "control": "switch", "default": False,
      "purpose": "给听不清谁在说话、场外音效用的无障碍轨。",
      "after": "开：另写 .sdh.srt，不和特效注释混。关：不生成。"},
+    {"pane": "export", "group": "样式", "key": "ass_style", "label": "字幕样式", "control": "style-editor",
+     "default": copy.deepcopy(DEFAULT_ASS_STYLE),
+     "purpose": "ASS 对白和顶注的字体、颜色、主/次/再次字号。",
+     "after": "改完即时预览。字体颜色只写入 ASS；SRT/VTT 播放器会用自己的字体。勾了叠行会自动补一份 ASS。"},
     {"pane": "effects", "group": "特效", "key": "effects_enabled", "label": "支持特效字幕", "control": "switch", "default": False,
      "purpose": "特效总闸：成品解说、人物背景顶注、关键词补注、Briefing。",
      "after": "开：下面子项生效，搜索抬高「特效/解说」ASS。关：只出干净对白，不写 notes.ass。"},
@@ -318,7 +329,7 @@ PANES = [
     ("basic", "基础", "没有「AI 联动」。本插件自己完成搜索到导出。"),
     ("ingest", "入库与监控", "事件默认开，目录监控默认关。两个稳定开关。STRM 另开，只搜不识别。"),
     ("search", "搜索偏好", "只决定下载哪一条源，不决定最后写成什么文件。"),
-    ("export", "导出包", "语种 1–3 个有序；顺序即字号。格式和版式多选。"),
+    ("export", "导出包", "语种 1–3 个有序。格式和版式多选。ASS 样式可改字体颜色和多行字号。"),
     ("effects", "特效字幕", "默认关。人物背景顶注可单独关。不做卡拉 OK 和飞字。"),
     ("asr", "识别 ASR", "Whisper 听写。和大模型调用分开配。"),
     ("model", "翻译与大模型", "对白可走免费引擎；质检/检索仍走大模型。"),
@@ -416,6 +427,8 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
             normalized[key] = validate_target_languages(incoming)
         elif key == "openai_endpoints":
             normalized[key] = normalize_endpoints(incoming)
+        elif key == "ass_style":
+            normalized[key] = normalize_ass_style(incoming)
         elif control in {"multi", "order"}:
             options = tuple(item["value"] for item in field.get("options") or [])
             normalized[key] = _pick_list(incoming, options, list(default))
@@ -436,11 +449,11 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
                 aliases = RAR_ALIASES
             normalized[key] = _pick(incoming, options, str(default), aliases)
         elif control == "preset":
-            normalized[key] = incoming if incoming in {"library_zh", "plex", "web", "legacy"} else "library_zh"
+            normalized[key] = incoming if incoming in PRESET_IDS else "library_zh"
         else:
             normalized[key] = incoming if incoming is not None else default
 
-    if normalized["export_preset"] == "plex":
+    if normalized["export_preset"] in {"plex", "fnos"}:
         normalized["mark_default"] = False
     normalized["target_languages"] = validate_target_languages(normalized.get("target_languages"))
     normalized["export_layouts"] = _pick_list(normalized.get("export_layouts"), tuple(LAYOUTS), ["mono"])

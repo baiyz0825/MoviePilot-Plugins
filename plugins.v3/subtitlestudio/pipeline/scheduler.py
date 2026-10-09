@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, Optional
 
 from ..core.logging import studio_done, studio_log
 from ..core.models import Job
+from ..core.notify import should_notify
 from ..ingest.debounce import IngestDebouncer
 from ..ingest.gates import evaluate_gates, is_strm_path
 from ..storage.job_store import JobStore, utc_now
@@ -49,10 +50,12 @@ class JobScheduler:
         runner: Callable[[Job], None],
         *,
         logger: Any = None,
+        notify: Optional[Callable[[Job], None]] = None,
     ):
         self.store = store
         self.runner = runner
         self.logger = logger
+        self.notify = notify
         self.debouncer = IngestDebouncer()
         self._stop = threading.Event()
         self._worker: Optional[threading.Thread] = None
@@ -85,6 +88,9 @@ class JobScheduler:
         force: bool = False,
     ) -> Job:
         identity = identity or {}
+        if config is None:
+            getter = getattr(self, "config_getter", None)
+            config = getter() if callable(getter) else {}
         ok, reason = evaluate_gates(config or {}, path, payload)
         if not ok and not force:
             studio_log(self.logger, "info", "入队跳过 title=%s trigger=%s reason=%s path=%s", title or path, trigger, reason, path)
@@ -102,7 +108,9 @@ class JobScheduler:
                 **{key: identity.get(key, "") for key in ("media_source", "media_id", "tmdbid", "doubanid")},
                 payload=payload or {},
             )
-            return self.store.save_job(job)
+            saved = self.store.save_job(job)
+            self._maybe_notify(saved)
+            return saved
         if trigger != "manual" and not force and not self.debouncer.allow(identity, path):
             studio_log(self.logger, "info", "5 分钟防抖，跳过重复入队 trigger=%s path=%s", trigger, path)
             existing = next((item for item in self.store.list_jobs(q=path, limit=20) if item.path == path), None)
@@ -168,7 +176,9 @@ class JobScheduler:
         job.status = "cancelled"
         job.finished_at = utc_now()
         studio_log(self.logger, "info", "取消排队任务 job=%s title=%s", job.job_id, job.title)
-        return self.store.save_job(job)
+        saved = self.store.save_job(job)
+        self._maybe_notify(saved)
+        return saved
 
     def retry(self, job_id: str) -> Optional[Job]:
         job = self.store.get_job(job_id)
@@ -235,4 +245,15 @@ class JobScheduler:
             studio_log(self.logger, "error", "任务失败 job=%s title=%s error=%s", job.job_id, job.title, exc)
             if self.logger:
                 self.logger.error(traceback.format_exc())
+            self._maybe_notify(job)
             studio_done(self.logger)
+
+    def _maybe_notify(self, job: Job) -> None:
+        getter = getattr(self, "config_getter", None)
+        config = getter() if callable(getter) else {}
+        if not should_notify(config or {}, job) or not self.notify:
+            return
+        try:
+            self.notify(job)
+        except Exception as exc:  # noqa: BLE001
+            studio_log(self.logger, "warning", "通知推送失败 job=%s：%s", job.job_id, exc)

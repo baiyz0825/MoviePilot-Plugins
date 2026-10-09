@@ -42,6 +42,43 @@ def test_config_defaults_and_language_limit(gen: str = GEN):
     assert cfg["abort_on_high_failure"] is False
     keys = {item["key"] for item in schema.FIELDS}
     assert "watch_paths" in keys and "openai_endpoints" in keys
+    assert "ass_style" in keys
+    assert "notify_on" in keys
+    assert cfg["send_notify"] is False
+    assert cfg["notify_on"] == ["success", "failed"]
+    assert cfg["ass_style"]["sizes"] == [22, 17, 14]
+
+
+def test_notify_payload_and_gating(gen: str = GEN):
+    notify = load_domain(gen, "core.notify")
+    models = load_domain(gen, "core.models")
+    success = models.Job(
+        job_id="n1",
+        title="沙丘",
+        path="/media/Dune.mkv",
+        status="success",
+        trigger="event",
+        payload={
+            "poster": "http://poster/dune.jpg",
+            "export": [
+                {"written": True, "filename": "Dune.default.chi.zh-cn.srt"},
+                {"written": False, "filename": "Dune.en.srt"},
+            ],
+        },
+    )
+    failed = models.Job(job_id="n2", title="沙丘", path="/media/Dune.mkv", status="failed", error="没有可用字幕源")
+    assert notify.should_notify({"send_notify": False}, success) is False
+    assert notify.should_notify({"send_notify": True}, success) is True
+    assert notify.should_notify({"send_notify": True, "notify_on": ["failed"]}, success) is False
+    assert notify.should_notify({"send_notify": True, "notify_on": ["failed"]}, failed) is True
+    payload = notify.build_notify_payload(success)
+    assert payload["title"] == "字幕工坊 · 完成"
+    assert "Dune.default.chi.zh-cn.srt" in payload["text"]
+    assert "来源：整理入库" in payload["text"]
+    assert payload["image"] == "http://poster/dune.jpg"
+    fail_payload = notify.build_notify_payload(failed)
+    assert fail_payload["title"] == "字幕工坊 · 失败"
+    assert "没有可用字幕源" in fail_payload["text"]
 
 
 def test_cuegraph_roundtrip_and_ass_styles(gen: str = GEN):
@@ -53,6 +90,15 @@ def test_cuegraph_roundtrip_and_ass_styles(gen: str = GEN):
     ass = cuegraph.render_ass(graph, ["zh-Hans", "en"], sizes=[22, 17])
     assert "Style: Lang1" in ass and "Style: Lang2" in ass
     assert "你好" in ass
+    styled = cuegraph.render_ass(
+        graph,
+        ["zh-Hans"],
+        style={"font_name": "Microsoft YaHei", "primary_color": "#FFE566", "sizes": [28, 18, 12], "bold": True},
+    )
+    assert "Microsoft YaHei" in styled
+    assert ",28," in styled
+    assert "&H0066E5FF" in styled
+    assert styled.split("Style: Lang1,")[1].split(",")[6] == "-1"
 
 
 def test_format_repair_keeps_good_sentences(gen: str = GEN):
@@ -93,11 +139,56 @@ def test_export_plan_cartesian_and_extras(gen: str = GEN):
         "lang_stack": "main_bottom",
     }, "Movie")
     names = [item["filename"] for item in files]
-    assert any(name.endswith(".zh-Hans.default.srt") or ".default." in name for name in names)
+    assert "Movie.default.chi.zh-cn.srt" in names
+    assert any("bilingual" in name or "chi&eng" in name for name in names)
     extras = naming.extra_tracks({"effects_enabled": True, "enable_sdh": True, "save_asr_track": True, "target_languages": ["zh-Hans"]}, "Movie", asr_ran=True)
     kinds = {item["kind"] for item in extras}
     assert kinds == {"notes", "sdh", "asr"}
     assert naming.extra_tracks({"save_asr_track": True}, "Movie", asr_ran=False) == []
+
+
+def test_export_plan_uses_player_language_tags(gen: str = GEN):
+    naming = load_domain(gen, "core.naming")
+    library = naming.export_plan({
+        "export_preset": "library_zh",
+        "target_languages": ["zh-Hans"],
+        "export_layouts": ["mono"],
+        "export_formats": ["srt"],
+        "mark_default": True,
+    }, "Movie")
+    assert library[0]["filename"] == "Movie.default.chi.zh-cn.srt"
+    plex = naming.export_plan({
+        "export_preset": "plex",
+        "target_languages": ["zh-Hans"],
+        "export_layouts": ["mono"],
+        "export_formats": ["srt"],
+        "mark_default": True,
+    }, "Movie")
+    assert plex[0]["filename"] == "Movie.chi.srt"
+    fnos = naming.export_plan({
+        "export_preset": "fnos",
+        "target_languages": ["zh-Hans"],
+        "export_layouts": ["mono"],
+        "export_formats": ["srt"],
+        "mark_default": True,
+    }, "Movie")
+    assert fnos[0]["filename"] == "Movie.chs.srt"
+    web = naming.export_plan({
+        "export_preset": "web",
+        "target_languages": ["zh-Hans"],
+        "export_layouts": ["mono"],
+        "export_formats": ["srt"],
+        "mark_default": True,
+    }, "Movie")
+    assert web[0]["filename"] == "Movie.zh-CN.default.srt"
+    sized = naming.export_plan({
+        "export_preset": "library_zh",
+        "target_languages": ["zh-Hans", "en"],
+        "export_layouts": ["stacked"],
+        "export_formats": ["ass"],
+        "ass_style": {"sizes": [30, 16, 12]},
+    }, "Movie")
+    assert sized[0]["sizes"] == [30, 16]
 
 
 def test_packager_writes_and_skip_policy(tmp_path: Path, gen: str = GEN):
@@ -105,7 +196,7 @@ def test_packager_writes_and_skip_policy(tmp_path: Path, gen: str = GEN):
     packager = load_domain(gen, "packager.export_pack")
     video = tmp_path / "Movie.mkv"
     video.write_bytes(b"x")
-    existing = tmp_path / "Movie.zh-Hans.srt"
+    existing = tmp_path / "Movie.chi.zh-cn.srt"
     existing.write_text("old", encoding="utf-8")
     graph = models.CueGraph(
         job_id="j",

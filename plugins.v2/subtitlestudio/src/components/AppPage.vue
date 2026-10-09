@@ -324,6 +324,7 @@ defineExpose({ reload, loadStatus: reload })
             :langs="config.target_languages || ['zh-Hans']"
             :tracks="previewTracks"
             :stack="config.lang_stack || 'main_bottom'"
+            :style-config="config.ass_style || {}"
             :video-url="pluginApi.previewVideoUrl(activeJob.job_id)"
             :enabled="config.preview_enabled !== false"
             @time="currentMs = $event"

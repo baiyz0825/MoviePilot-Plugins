@@ -44,6 +44,10 @@ def test_settings_use_textarea_and_host_controls(gen: str = GEN):
     assert "VSwitch" in settings
     assert "VExpansionPanels" in settings
     assert "watch_paths" in settings or "textarea" in settings
+    assert "ss-style-preview" in settings
+    assert "style-editor" in settings
+    assert "notify_on" in settings
+    assert "send_notify" in settings
     viewport = _read("src/composables/useMobileViewport.js", gen=gen)
     assert "(max-width: 899px)" in viewport
     injects = _read("src/composables/useHostInjects.js", gen=gen)

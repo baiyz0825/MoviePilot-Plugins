@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 
 from .models import Cue, CueGraph, LANG_FONT_SIZES
+from .style import ass_style_line, normalize_ass_style, style_sizes
 
 SRT_BLOCK = re.compile(
     r"(\d+)\s*\n(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*\n([\s\S]*?)(?=\n\n|\Z)",
@@ -205,24 +206,26 @@ def render_ass(
     stack: str = "main_bottom",
     include_notes: bool = True,
     title: str = "SubtitleStudio",
+    style: Dict[str, Any] | None = None,
 ) -> str:
     """现场打包预览 / 导出 ASS。叠行用 Lang1/Lang2/Lang3 独立 Style，避免抢 Default。"""
+    spec = normalize_ass_style(style)
     used_langs = [item for item in langs if item] or ["source"]
-    used_sizes = list(sizes or LANG_FONT_SIZES[: len(used_langs)])
+    used_sizes = list(sizes or style_sizes(spec, len(used_langs)) or LANG_FONT_SIZES[: len(used_langs)])
     styles = [
-        "Style: Default,Arial,22,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,20,1"
+        ass_style_line("Default", spec, size=used_sizes[0], color=spec["primary_color"], alignment=2, margin_v=spec["margin_v"])
     ]
     for index, size in enumerate(used_sizes, start=1):
         alignment = 2 if stack == "main_bottom" else 8
         if index > 1:
             alignment = 8 if stack == "main_bottom" else 2
-        margin_v = 20 + (index - 1) * 28 if stack == "main_bottom" else 20 + (len(used_sizes) - index) * 28
+        gap = spec["line_gap"]
+        margin_v = spec["margin_v"] + (index - 1) * gap if stack == "main_bottom" else spec["margin_v"] + (len(used_sizes) - index) * gap
         styles.append(
-            f"Style: Lang{index},Arial,{size},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-            f"0,0,0,0,100,100,0,0,1,2,2,{alignment},10,10,{margin_v},1"
+            ass_style_line(f"Lang{index}", spec, size=size, color=spec["primary_color"], alignment=alignment, margin_v=margin_v)
         )
     styles.append(
-        "Style: Note,Arial,16,&H00B4E0FF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,2,2,8,10,10,24,1"
+        ass_style_line("Note", spec, size=spec["note_size"], color=spec["note_color"], alignment=8, margin_v=max(16, spec["margin_v"]))
     )
     events = ["Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for cue in graph.sorted_cues():

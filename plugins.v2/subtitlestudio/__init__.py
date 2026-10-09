@@ -193,11 +193,10 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             self._services.scheduler.kick()
 
     def notify_job(self, job) -> None:
+        from .core.notify import build_notify_payload
+        from .host import deliver_notice
         try:
-            self.post_message(
-                title="字幕工坊",
-                text=f"{job.title} {job.status}",
-            )
+            deliver_notice(self, build_notify_payload(job, getattr(self, "_config", {}) or {}))
         except Exception:
             return
 
