@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# 按 package.v2.json / package.v3.json / package.json 里 release=true 的条目打包并发布。
-# 没有对应 Tag、目录相对 Tag 有变更、或 Release 缺少 zip 时，自动创建或替换。
+# 只处理 package*.json 里 release=true 的插件。
+# 发布条件（满足一条就打当前索引版本的 zip）：
+# 1. 手动 force=true
+# 2. 当前版本还没有完整 Release（无 Tag / 无 zip）
+# 3. 当前索引版本和上一份同代 Release 不一致
+# 4. 插件目录相对上一份同代 Release 有文件变化
 set -euo pipefail
 
 FILTER_PLUGIN_ID="${FILTER_PLUGIN_ID:-}"
@@ -71,6 +75,29 @@ dir_changed_since_tag() {
     return 1
   fi
   return 0
+}
+
+major_prefix() {
+  printf '%s.' "${1%%.*}"
+}
+
+collect_line_versions() {
+  local plugin_id="$1"
+  local version="$2"
+  local prefix
+  prefix="$(major_prefix "$version")"
+  {
+    git tag -l "${plugin_id}_v${prefix}*"
+    if have_gh; then
+      gh release list --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null || true
+    fi
+  } | grep -E "^${plugin_id}_v${prefix//./\\.}" | sed "s/^${plugin_id}_v//" | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -u -V || true
+}
+
+last_published_version() {
+  local plugin_id="$1"
+  local version="$2"
+  collect_line_versions "$plugin_id" "$version" | tail -n 1 || true
 }
 
 release_asset_present() {
@@ -189,63 +216,83 @@ process_package() {
       continue
     fi
 
+    last_version="$(last_published_version "$plugin_id" "$plugin_version")"
+    log "当前索引版本：$plugin_version"
+    log "同代已发布版本："
+    line_versions="$(collect_line_versions "$plugin_id" "$plugin_version" || true)"
+    if [ -z "$line_versions" ]; then
+      log "  （无）"
+    else
+      printf '%s\n' "$line_versions" | sed 's/^/  - /'
+    fi
+    if [ -z "$last_version" ]; then
+      log "上一份同代 Release：无"
+    else
+      log "上一份同代 Release：${plugin_id}_v${last_version}"
+    fi
+
     local_tag="no"
     if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
       local_tag="yes"
     fi
-    log "本地 Tag：$local_tag"
+    log "当前版本本地 Tag：$local_tag"
 
     remote_release="no"
     if have_gh && gh release view "$tag" >/dev/null 2>&1; then
       remote_release="yes"
-      log "远程 Release 存在，详情："
+      log "当前版本远程 Release 存在，详情："
       gh release view "$tag"
     elif have_gh; then
-      log "远程 Release 不存在"
+      log "当前版本远程 Release 不存在"
     else
-      log "未找到 gh，按远程 Release 不存在处理（Actions 里必须有 gh）"
+      log "未找到 gh，按当前版本 Release 不存在处理（Actions 里必须有 gh）"
     fi
 
     asset_ok="no"
     if [ "$remote_release" = "yes" ] && release_asset_present "$tag" "$asset"; then
       asset_ok="yes"
     fi
-    log "远程资产 $asset：$asset_ok"
+    log "当前版本远程资产 $asset：$asset_ok"
 
+    compare_tag="$tag"
+    if [ "$local_tag" != "yes" ] && [ -n "$last_version" ]; then
+      compare_tag="${plugin_id}_v${last_version}"
+    fi
     changed="yes"
-    if [ "$local_tag" = "yes" ] && ! dir_changed_since_tag "$tag" "$plugin_dir"; then
+    if git rev-parse -q --verify "refs/tags/$compare_tag" >/dev/null && ! dir_changed_since_tag "$compare_tag" "$plugin_dir"; then
       changed="no"
-      log "相对 Tag $tag，目录 $plugin_dir 无变更"
-      log "变更文件（应为空）："
-      git diff --name-only "$tag" -- "$plugin_dir" || true
+      log "相对 $compare_tag，目录 $plugin_dir 无变更"
     else
-      if [ "$local_tag" = "no" ]; then
-        log "本地没有 Tag，视为需要打包"
+      if ! git rev-parse -q --verify "refs/tags/$compare_tag" >/dev/null; then
+        log "没有可用于对比的 Tag $compare_tag，视为目录有变化"
       else
-        log "相对 Tag $tag，目录 $plugin_dir 有变更："
-        git diff --name-only "$tag" -- "$plugin_dir" || true
+        log "相对 $compare_tag，目录 $plugin_dir 有变更："
+        git diff --name-only "$compare_tag" -- "$plugin_dir" || true
       fi
     fi
 
-    if [ "$FORCE_RELEASE" != "true" ] && [ "$changed" = "no" ] && [ "$remote_release" = "yes" ] && [ "$asset_ok" = "yes" ]; then
-      log "无需重新打包：目录未变且 Release 资产齐全"
+    action_reason=""
+    if [ "$FORCE_RELEASE" = "true" ]; then
+      action_reason="manual force"
+    elif [ "$remote_release" = "no" ] || [ "$asset_ok" = "no" ]; then
+      action_reason="current version has no complete release"
+    elif [ -z "$last_version" ]; then
+      action_reason="no previous release"
+    elif [ "$plugin_version" != "$last_version" ]; then
+      action_reason="version changed: $last_version -> $plugin_version"
+    elif [ "$changed" = "yes" ]; then
+      action_reason="plugin files changed since $compare_tag"
+    fi
+
+    if [ -z "$action_reason" ]; then
+      log "跳过发布：版本=$plugin_version，上一份=$last_version，目录无变化，zip 齐全"
       if [ "$DRY_RUN" != "true" ] && have_gh; then
         gh release edit "$tag" --notes "$release_notes"
         log "已同步 Release 说明"
       fi
       echo "$tag" >> "$PROCESSED_TAGS"
-      record "skip" "$plugin_id" "$plugin_version" "$tag" "unchanged and asset present"
+      record "skip" "$plugin_id" "$plugin_version" "$tag" "unchanged since last release"
       continue
-    fi
-
-    if [ "$FORCE_RELEASE" = "true" ]; then
-      action_reason="force=true"
-    elif [ "$remote_release" = "no" ]; then
-      action_reason="release missing"
-    elif [ "$asset_ok" = "no" ]; then
-      action_reason="zip asset missing"
-    else
-      action_reason="plugin directory changed"
     fi
     log "将打包并发布，原因：$action_reason"
 

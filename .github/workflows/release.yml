@@ -1,18 +1,12 @@
+# 推送到 main 后对比当前索引版本和上一份同代 Release：
+# 没有 Release、版本变了、插件目录有变化则打包；也可手动跑，force 强制重打。
+# V2 / V3 版本号必须分开（1.x / 2.x），Tag 是 SubtitleStudio_v版本，zip 是 subtitlestudio_v版本.zip。
 name: Plugin Release
 
 on:
   push:
     branches:
       - main
-    paths:
-      - package.json
-      - package.v2.json
-      - package.v3.json
-      - plugins/**
-      - plugins.v2/**
-      - plugins.v3/**
-      - .github/scripts/**
-      - .github/workflows/release.yml
   workflow_dispatch:
     inputs:
       ref:
@@ -24,7 +18,7 @@ on:
         required: false
         default: ""
       force:
-        description: Replace an existing release even when the plugin directory did not change.
+        description: Force republish even when version and files match the last release.
         required: false
         default: "false"
         type: boolean

@@ -40,7 +40,6 @@ MT_ENGINES = ("edge", "gtx", "deeplx", "microsoft", "google", "libre")
 PROVIDERS = ("subhd", "zimuku", "assrt", "opensubtitles")
 SEARCH_LANGS = ("bilingual", "zh-Hans", "zh-Hant", "en")
 WHISPER_MODELS = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
-VAD_MODES = ("webrtc", "rms")
 RAR_MODES = ("none", "container_install", "mapped_binary")
 RAR_ALIASES = {"无": "none", "容器内安装": "container_install", "映射二进制": "mapped_binary"}
 PREVIEW_SOURCES = ("local_first", "mediaserver", "blackboard")
@@ -285,10 +284,6 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "quality", "group": "质量", "key": "write_failure_placeholder", "label": "失败句写入「[翻译失败]」", "control": "switch", "default": False,
      "purpose": "对不上的句子在字幕文件里写什么。",
      "after": "关（默认）：保留原文，工作台标 Issue。"},
-    {"pane": "queue", "group": "调轴", "key": "timeline_vad_mode", "label": "调轴 VAD", "control": "select", "default": "webrtc",
-     "options": [{"title": "webrtc", "value": "webrtc"}, {"title": "rms", "value": "rms"}],
-     "purpose": "用哪种方法找人声，把字幕对齐口型。",
-     "after": "STRM 和没有音轨的文件不会调轴。"},
     {"pane": "queue", "group": "调轴", "key": "timeline_max_offset", "label": "最大偏移（秒）", "control": "number", "default": 120,
      "purpose": "整轨最多能挪多久。", "after": "默认 120，上限 300。"},
     {"pane": "queue", "group": "调轴", "key": "timeline_min_offset", "label": "最小偏移（秒）", "control": "number", "default": 0.2,

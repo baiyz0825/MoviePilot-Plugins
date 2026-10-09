@@ -59,7 +59,20 @@ def test_release_workflow_runs_packaging_script() -> None:
     assert script.is_file()
     assert "bash .github/scripts/release_plugins.sh" in workflow
     assert "Diagnose environment" in workflow
+    assert "workflow_dispatch" in workflow
+    assert "paths:" not in workflow
+    assert not (ROOT / ".github/workflows/build-webrtcvad-wheels.yml").exists()
     text = script.read_text(encoding="utf-8")
+    assert "last_published_version" in text
     assert "gh release create" in text
     assert "unzip -l" in text
     assert "api/__init__.py" in text
+
+
+def test_requirements_do_not_ship_unused_webrtcvad() -> None:
+    v2 = (ROOT / "plugins.v2/subtitlestudio/requirements.txt").read_text(encoding="utf-8")
+    v3 = (ROOT / "plugins.v3/subtitlestudio/requirements.txt").read_text(encoding="utf-8")
+    pyproject = (ROOT / "plugins.v3/subtitlestudio/pyproject.toml").read_text(encoding="utf-8")
+    assert "webrtcvad" not in v2
+    assert "webrtcvad" not in v3
+    assert "webrtcvad" not in pyproject

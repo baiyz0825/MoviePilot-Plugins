@@ -99,7 +99,7 @@ V3 `pyproject.toml` 不要写死 `version`。两边都改就各升一号（`1.0.
 python .github/scripts/check_plugin_versions.py package.json package.v2.json package.v3.json
 ```
 
-`"release": true` 后由 `.github/workflows/release.yml` 自动打包。目录相对旧 Tag 有变更、Release/zip 缺失、或手动 `force=true` 时，会删除同名 Release 再打 `subtitlestudio_v版本.zip` 和 Tag `SubtitleStudio_v版本`。日志会打出索引、决策、zip 全量清单和 `api/` 校验。仓库 Settings 里必须打开 GitHub Actions；没有对应 Release 时，宿主会按 release 路径安装失败或只落到部分文件，加载报 `No module named 'app.plugins.subtitlestudio.api'`。
+`"release": true` 后只留 `.github/workflows/release.yml`。`main` 推送或手动触发时，对比当前索引版本和上一份同代 Release：没有包、版本变了、插件目录有变化，或 `force=true`，就打 `subtitlestudio_v版本.zip` 和 Tag `SubtitleStudio_v版本`。V2 必须是 `1.x`，V3 必须是 `2.x`，宿主靠 `package.v2.json` / `package.v3.json` 选代，再按这个 Tag 下 zip。日志会打出对比过程、zip 全量清单和 `api/` 校验。仓库 Settings 里必须打开 GitHub Actions。
 
 ## 测试
 
