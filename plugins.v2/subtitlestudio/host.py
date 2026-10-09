@@ -179,25 +179,26 @@ def plugin_action_type():
     return getattr(EventType, "PluginAction", "plugin.action")
 
 
-def load_transfer_history(limit: int = 400) -> List[Dict[str, Any]]:
+def load_transfer_history(limit: int = 800) -> List[Dict[str, Any]]:
+    """读 MoviePilot 本地整理记录。和海拉鲁同一入口，不是 Emby 媒体库 API。"""
+    from .core.history import history_object_to_dict
     try:
         from app.db.models.transferhistory import TransferHistory
     except Exception:
         return []
-    rows = []
-    listing = getattr(TransferHistory, "list_by_page", None) or getattr(TransferHistory, "list", None)
+    items = []
+    listing = getattr(TransferHistory, "list_by_page", None)
     try:
-        items = listing(1, limit) if listing else []
+        if listing:
+            items = listing(db=None, page=1, count=limit, status=True)
+    except TypeError:
+        try:
+            items = listing(None, 1, limit) if listing else []
+        except Exception:
+            try:
+                items = listing(1, limit) if listing else []
+            except Exception:
+                items = []
     except Exception:
-        return []
-    for item in items or []:
-        rows.append({
-            "title": getattr(item, "title", None) or getattr(item, "src", ""),
-            "path": getattr(item, "dest", None) or getattr(item, "dest_file", None) or getattr(item, "src", ""),
-            "tmdbid": getattr(item, "tmdbid", None),
-            "doubanid": getattr(item, "doubanid", None),
-            "type": getattr(item, "type", None) or getattr(item, "media_type", None),
-            "season": getattr(item, "seasons", None) or getattr(item, "season", None),
-            "episode": getattr(item, "episodes", None) or getattr(item, "episode", None),
-        })
-    return rows
+        items = []
+    return [history_object_to_dict(item) for item in items or []]

@@ -1,6 +1,6 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
 import { u as useHostInjects, a as useMobileViewport, _ as _sfc_main$1 } from './SettingsForm-CGWuXqQW.js';
-import { c as createStudioApi } from './studioApi-faEpD5op.js';
+import { c as createStudioApi } from './studioApi-CSoBhxaG.js';
 
 const {unref:_unref,createVNode:_createVNode,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createElementVNode:_createElementVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 

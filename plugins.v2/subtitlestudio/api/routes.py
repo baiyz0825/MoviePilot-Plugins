@@ -23,9 +23,10 @@ def build_api_routes(plugin) -> List[Dict[str, Any]]:
         _route("/config", plugin.api_save_config, ["POST"], "保存配置"),
         _route("/fields", plugin.api_fields, ["GET"], "设置页字段合同"),
         _route("/media", plugin.api_list_media, ["GET"], "媒体目录"),
-        _route("/media/refresh", plugin.api_refresh_media, ["POST"], "刷新媒体目录"),
+        _route("/media/refresh", plugin.api_refresh_media, ["POST"], "拉取整理记录"),
         _route("/jobs", plugin.api_list_jobs, ["GET"], "任务队列"),
         _route("/jobs", plugin.api_create_job, ["POST"], "入队"),
+        _route("/jobs/batch", plugin.api_create_jobs, ["POST"], "批量入队"),
         _route("/jobs/{job_id}", plugin.api_get_job, ["GET"], "任务详情"),
         _route("/jobs/{job_id}/cut-in", plugin.api_cut_in, ["POST"], "插队"),
         _route("/jobs/{job_id}/priority", plugin.api_set_priority, ["POST"], "改优先级"),
@@ -101,11 +102,18 @@ class StudioApiMixin:
     def api_fields(self) -> Dict[str, Any]:
         return ok({"fields": FIELDS, "panes": PANES, "defaults": default_config()})
 
-    def api_list_media(self, q: str = "", media_type: str = "") -> Dict[str, Any]:
-        return ok({"items": self.services.catalog.list_media(q=q, media_type=media_type)})
+    def api_list_media(self, q: str = "", media_type: str = "", force: bool = False) -> Dict[str, Any]:
+        items = self.services.catalog.list_media(q=q, media_type=media_type, force=force)
+        groups = self.services.catalog.list_groups(q=q, media_type=media_type, force=False)
+        return ok({
+            "items": items,
+            "groups": groups,
+            "counts": {"files": len(items), "groups": len(groups)},
+            "source": "transfer_history",
+        })
 
     def api_refresh_media(self) -> Dict[str, Any]:
-        return self.api_list_media()
+        return self.api_list_media(force=True)
 
     def api_list_jobs(self, q: str = "", status: str = "") -> Dict[str, Any]:
         jobs = [item.to_dict() for item in self.services.store.list_jobs(q=q, status=status)]
@@ -118,6 +126,7 @@ class StudioApiMixin:
         ok_gate, reason = evaluate_gates(config, path, data)
         if not path:
             return fail("缺少媒体路径")
+        force = True if data.get("force", True) else False
         job = self.services.scheduler.enqueue(
             title=str(data.get("title") or Path(path).stem),
             path=path,
@@ -132,11 +141,36 @@ class StudioApiMixin:
             strategy=str(data.get("strategy") or config.get("transfer_strategy") or "search_then_translate"),
             config=config,
             payload=data,
-            force=bool(data.get("force") or not ok_gate and data.get("force_skip_gate")),
+            force=force,
         )
         if job.status == "skipped":
             return fail(job.error or reason, job.to_dict())
         return ok(job.to_dict(), "已入队")
+
+    def api_create_jobs(self, body: Dict[str, Any] = None) -> Dict[str, Any]:
+        data = body or {}
+        rows = data.get("items") or []
+        if not rows:
+            return fail("没有勾选媒体文件")
+        created = []
+        skipped = []
+        for item in rows:
+            if isinstance(item, str):
+                item = {"path": item}
+            payload = {
+                **item,
+                "strategy": data.get("strategy") or item.get("strategy"),
+                "priority": data.get("priority") or item.get("priority") or "P0",
+                "force": data.get("force", True),
+            }
+            result = self.api_create_job(payload)
+            envelope = result if isinstance(result, dict) else {}
+            job = envelope.get("data") if envelope.get("success") else envelope.get("data")
+            if envelope.get("success") and job:
+                created.append(job)
+            else:
+                skipped.append({"path": item.get("path"), "reason": envelope.get("message") or "跳过"})
+        return ok({"items": created, "skipped": skipped, "count": len(created)}, f"已入队 {len(created)} 条")
 
     def api_get_job(self, job_id: str) -> Dict[str, Any]:
         job = self.services.store.get_job(job_id)

@@ -206,24 +206,24 @@ def plugin_action_type():
     return getattr(EventType, "PluginAction", "plugin.action")
 
 
-def load_transfer_history(limit: int = 400) -> List[Dict[str, Any]]:
+def load_transfer_history(limit: int = 800) -> List[Dict[str, Any]]:
+    """V3 整理记录必须自己拿 Session，不能把 None 传给模型。"""
+    from .core.history import history_object_to_dict
+    items = []
     try:
-        from app.db.oper.transfer import TransferHistoryOper
-        oper = TransferHistoryOper()
-        items = oper.list_by_page(1, limit) if hasattr(oper, "list_by_page") else []
+        from app.db.models.transferhistory import TransferHistory
+        from app.db.session import SessionFactory
+        session = SessionFactory()
+        try:
+            items = TransferHistory.list_by_page(session, page=1, count=limit, status=True) or []
+        finally:
+            session.close()
     except Exception:
-        items = []
-    rows = []
-    for item in items or []:
-        rows.append({
-            "title": getattr(item, "title", None) or "",
-            "path": getattr(item, "dest", None) or getattr(item, "dest_file", None) or "",
-            "media_source": getattr(item, "media_source", None) or "",
-            "media_id": getattr(item, "media_id", None) or "",
-            "tmdbid": getattr(item, "tmdbid", None),
-            "doubanid": getattr(item, "doubanid", None),
-            "type": getattr(item, "type", None),
-            "season": getattr(item, "seasons", None) or getattr(item, "season", None),
-            "episode": getattr(item, "episodes", None) or getattr(item, "episode", None),
-        })
-    return rows
+        try:
+            from app.db.oper.transferhistory import TransferHistoryOper
+            oper = TransferHistoryOper()
+            listing = getattr(oper, "list_by_page", None)
+            items = listing(page=1, count=limit, status=True) if listing else []
+        except Exception:
+            items = []
+    return [history_object_to_dict(item) for item in items or []]

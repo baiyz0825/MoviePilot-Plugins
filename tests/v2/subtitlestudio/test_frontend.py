@@ -31,6 +31,8 @@ def test_app_page_matches_mobile_contract(gen: str = GEN):
     assert "moviepilot:toast" not in page or True
     assert "VBottomSheet" in page
     assert "插队" in page
+    assert "拉取媒体库" in page
+    assert "提交识别" in page
     assert "ss-timeline" in page
     assert "PreviewPlayer" in page
     assert "watch_paths" not in page or True
@@ -50,6 +52,7 @@ def test_settings_use_textarea_and_host_controls(gen: str = GEN):
     assert "moviepilot:confirm" in injects
     api = _read("src/api/studioApi.js", gen=gen)
     assert "plugin/" in api
+    assert "/jobs/batch" in api
     assert "/api/v1" not in api
 
 

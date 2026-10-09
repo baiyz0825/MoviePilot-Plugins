@@ -1,6 +1,6 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
 import { a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-CGWuXqQW.js';
-import { c as createStudioApi } from './studioApi-faEpD5op.js';
+import { c as createStudioApi } from './studioApi-CSoBhxaG.js';
 
 const {openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,createElementVNode:_createElementVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,toDisplayString:_toDisplayString$1,normalizeClass:_normalizeClass,normalizeStyle:_normalizeStyle$1} = await importShared('vue');
 
@@ -90,7 +90,7 @@ return (_ctx, _cache) => {
 
 };
 
-const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,unref:_unref,withKeys:_withKeys,createBlock:_createBlock,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
+const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "plugin-root" };
@@ -107,22 +107,28 @@ const _hoisted_5 = {
 const _hoisted_6 = { class: "d-flex align-center mb-3" };
 const _hoisted_7 = { class: "ms-2" };
 const _hoisted_8 = { class: "text-medium-emphasis mb-2" };
-const _hoisted_9 = { class: "d-flex ga-2 mb-3 h-scroll" };
+const _hoisted_9 = { class: "d-flex ga-2 mb-3" };
 const _hoisted_10 = {
   class: "d-flex ga-2 mb-3",
   style: {"overflow-x":"auto"}
 };
-const _hoisted_11 = {
+const _hoisted_11 = { class: "text-medium-emphasis mb-3" };
+const _hoisted_12 = {
+  class: "d-flex ga-2 mb-3",
+  style: {"overflow-x":"auto"}
+};
+const _hoisted_13 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_12 = { class: "mb-2" };
-const _hoisted_13 = { class: "d-flex ga-2 my-3" };
-const _hoisted_14 = ["onClick"];
-const _hoisted_15 = {
+const _hoisted_14 = { class: "mb-2" };
+const _hoisted_15 = { class: "d-flex ga-2 my-3" };
+const _hoisted_16 = ["onClick"];
+const _hoisted_17 = {
   key: 0,
   class: "ss-savebar pa-3 d-flex ga-2"
 };
+const _hoisted_18 = { class: "text-medium-emphasis mb-2" };
 
 const {computed,onMounted,reactive,ref} = await importShared('vue');
 
@@ -149,8 +155,11 @@ const loading = ref(false);
 const dirty = ref(false);
 const mediaQuery = ref('');
 const mediaType = ref('');
-const mediaItems = ref([]);
+const mediaGroups = ref([]);
+const mediaCounts = ref({ files: 0, groups: 0 });
 const mediaDetail = ref(null);
+const selectedPaths = ref({});
+const submitting = ref(false);
 const jobsQuery = ref('');
 const jobStatus = ref('');
 const jobs = ref([]);
@@ -164,7 +173,8 @@ const editingCue = ref(null);
 const config = ref({});
 const fields = ref([]);
 const enqueueSheet = ref(false);
-const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0' });
+const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: true, items: [] });
+const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]));
 
 const tabs = [
   { value: 'media', title: '媒体', icon: 'mdi-filmstrip' },
@@ -193,7 +203,44 @@ async function reload() {
 
 async function loadMedia() {
   const data = await pluginApi.value.media(mediaQuery.value, mediaType.value);
-  mediaItems.value = data?.items || [];
+  mediaGroups.value = data?.groups || [];
+  mediaCounts.value = data?.counts || { files: 0, groups: 0 };
+}
+
+async function refreshLibrary() {
+  loading.value = true;
+  try {
+    const data = await pluginApi.value.refreshMedia();
+    mediaGroups.value = data?.groups || [];
+    mediaCounts.value = data?.counts || { files: 0, groups: 0 };
+    toast.success?.(`已拉取 ${mediaCounts.value.files || 0} 个媒体文件`);
+  } catch (error) {
+    toast.error?.(error?.message || '拉取媒体库失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+function openGroup(group) {
+  mediaDetail.value = group;
+  selectedPaths.value = Object.fromEntries((group.files || []).map(item => [item.path, true]));
+}
+
+function toggleFile(path, value) {
+  selectedPaths.value = { ...selectedPaths.value, [path]: value };
+}
+
+function toggleAll(value) {
+  selectedPaths.value = Object.fromEntries((mediaDetail.value?.files || []).map(item => [item.path, value]));
+}
+
+function fileLabel(item) {
+  if (item.type === 'tv' && item.season && item.episode) {
+    const season = String(item.season).padStart(2, '0');
+    const episode = String(item.episode).padStart(2, '0');
+    return `S${season}E${episode} · ${item.filename || item.path}`
+  }
+  return item.filename || item.path
 }
 
 async function loadJobs() {
@@ -208,23 +255,58 @@ async function saveConfig() {
 }
 
 async function enqueue(item) {
-  enqueueForm.path = item.path;
-  enqueueForm.title = item.title;
-  enqueueForm.media_source = item.media_source;
-  enqueueForm.media_id = item.media_id;
-  enqueueForm.tmdbid = item.tmdbid;
-  enqueueForm.doubanid = item.doubanid;
+  enqueueForm.items = item?.path ? [item] : selectedFiles.value;
+  enqueueForm.path = item?.path || enqueueForm.items[0]?.path;
+  enqueueForm.title = item?.title || mediaDetail.value?.title;
+  enqueueForm.media_source = item?.media_source;
+  enqueueForm.media_id = item?.media_id;
+  enqueueForm.tmdbid = item?.tmdbid;
+  enqueueForm.doubanid = item?.doubanid;
+  enqueueForm.force = true;
   if (isMobile.value && dialog) {
-    dialog({ title: '入队覆盖项', fullscreen: true, content: '选择本次策略后入队' });
+    dialog({ title: '手动提交识别', fullscreen: true, content: '选择本次策略后入队' });
   }
   enqueueSheet.value = true;
 }
 
+async function submitSelected() {
+  if (!selectedFiles.value.length) {
+    toast.error?.('先勾选要识别的文件');
+    return
+  }
+  enqueueForm.items = selectedFiles.value;
+  enqueueForm.force = true;
+  enqueueSheet.value = true;
+}
+
 async function confirmEnqueue() {
-  await pluginApi.value.createJob({ ...enqueueForm });
-  enqueueSheet.value = false;
-  nav.value = 'jobs';
-  await loadJobs();
+  submitting.value = true;
+  try {
+    const items = enqueueForm.items?.length ? enqueueForm.items : [];
+    if (items.length > 1) {
+      await pluginApi.value.createJobs({
+        items,
+        strategy: enqueueForm.strategy,
+        priority: enqueueForm.priority,
+        force: enqueueForm.force,
+      });
+    } else {
+      const item = items[0] || enqueueForm;
+      await pluginApi.value.createJob({
+        ...item,
+        strategy: enqueueForm.strategy,
+        priority: enqueueForm.priority,
+        force: enqueueForm.force,
+      });
+    }
+    enqueueSheet.value = false;
+    nav.value = 'jobs';
+    await loadJobs();
+  } catch (error) {
+    toast.error?.(error?.message || '入队失败');
+  } finally {
+    submitting.value = false;
+  }
 }
 
 async function openJob(job) {
@@ -286,17 +368,19 @@ return (_ctx, _cache) => {
   const _component_VIcon = _resolveComponent("VIcon");
   const _component_VBtn = _resolveComponent("VBtn");
   const _component_VBtnToggle = _resolveComponent("VBtnToggle");
-  const _component_VTextField = _resolveComponent("VTextField");
-  const _component_VChip = _resolveComponent("VChip");
+  const _component_VCheckbox = _resolveComponent("VCheckbox");
   const _component_VListItemTitle = _resolveComponent("VListItemTitle");
   const _component_VListItemSubtitle = _resolveComponent("VListItemSubtitle");
   const _component_VListItem = _resolveComponent("VListItem");
   const _component_VList = _resolveComponent("VList");
-  const _component_VTable = _resolveComponent("VTable");
+  const _component_VTextField = _resolveComponent("VTextField");
+  const _component_VChip = _resolveComponent("VChip");
+  const _component_VAlert = _resolveComponent("VAlert");
   const _component_VCardTitle = _resolveComponent("VCardTitle");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VBottomSheet = _resolveComponent("VBottomSheet");
   const _component_VSelect = _resolveComponent("VSelect");
+  const _component_VSwitch = _resolveComponent("VSwitch");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createElementVNode("div", _hoisted_2, [
@@ -334,7 +418,7 @@ return (_ctx, _cache) => {
     _createElementVNode("div", _hoisted_4, [
       (nav.value === 'media')
         ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-            (_unref(isMobile) && mediaDetail.value)
+            (mediaDetail.value)
               ? (_openBlock(), _createElementBlock("div", _hoisted_5, [
                   _createElementVNode("div", _hoisted_6, [
                     _createVNode(_component_VBtn, {
@@ -342,42 +426,89 @@ return (_ctx, _cache) => {
                       class: "ss-touch",
                       onClick: _cache[1] || (_cache[1] = $event => (mediaDetail.value = null))
                     }),
-                    _createElementVNode("strong", _hoisted_7, _toDisplayString(mediaDetail.value.title), 1)
+                    _createElementVNode("strong", _hoisted_7, _toDisplayString(mediaDetail.value.title) + _toDisplayString(mediaDetail.value.year ? ` (${mediaDetail.value.year})` : ''), 1)
                   ]),
-                  _createElementVNode("div", _hoisted_8, _toDisplayString(mediaDetail.value.path), 1),
-                  _createVNode(_component_VBtn, {
-                    color: "primary",
-                    block: "",
-                    class: "ss-touch mb-2",
-                    onClick: _cache[2] || (_cache[2] = $event => (enqueue(mediaDetail.value)))
-                  }, {
-                    default: _withCtx(() => [...(_cache[28] || (_cache[28] = [
-                      _createTextVNode("入队", -1)
-                    ]))]),
+                  _createElementVNode("div", _hoisted_8, _toDisplayString(mediaDetail.value.library_name || 'MoviePilot 整理记录') + " · " + _toDisplayString(mediaDetail.value.file_count || mediaDetail.value.files?.length || 0) + " 个文件", 1),
+                  _createElementVNode("div", _hoisted_9, [
+                    _createVNode(_component_VBtn, {
+                      size: "small",
+                      variant: "text",
+                      class: "ss-touch",
+                      onClick: _cache[2] || (_cache[2] = $event => (toggleAll(true)))
+                    }, {
+                      default: _withCtx(() => [...(_cache[28] || (_cache[28] = [
+                        _createTextVNode("全选", -1)
+                      ]))]),
+                      _: 1
+                    }),
+                    _createVNode(_component_VBtn, {
+                      size: "small",
+                      variant: "text",
+                      class: "ss-touch",
+                      onClick: _cache[3] || (_cache[3] = $event => (toggleAll(false)))
+                    }, {
+                      default: _withCtx(() => [...(_cache[29] || (_cache[29] = [
+                        _createTextVNode("清空", -1)
+                      ]))]),
+                      _: 1
+                    })
+                  ]),
+                  _createVNode(_component_VList, null, {
+                    default: _withCtx(() => [
+                      (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(mediaDetail.value.files || [], (item) => {
+                        return (_openBlock(), _createBlock(_component_VListItem, {
+                          key: item.id || item.path
+                        }, {
+                          prepend: _withCtx(() => [
+                            _createVNode(_component_VCheckbox, {
+                              "model-value": !!selectedPaths.value[item.path],
+                              "hide-details": "",
+                              "onUpdate:modelValue": $event => (toggleFile(item.path, $event))
+                            }, null, 8, ["model-value", "onUpdate:modelValue"])
+                          ]),
+                          default: _withCtx(() => [
+                            _createVNode(_component_VListItemTitle, null, {
+                              default: _withCtx(() => [
+                                _createTextVNode(_toDisplayString(fileLabel(item)), 1)
+                              ]),
+                              _: 2
+                            }, 1024),
+                            _createVNode(_component_VListItemSubtitle, null, {
+                              default: _withCtx(() => [
+                                _createTextVNode(_toDisplayString(item.sidecars?.length || 0) + " 条外挂" + _toDisplayString(item.is_strm ? ' · STRM' : ''), 1)
+                              ]),
+                              _: 2
+                            }, 1024)
+                          ]),
+                          _: 2
+                        }, 1024))
+                      }), 128))
+                    ]),
                     _: 1
                   }),
                   _createVNode(_component_VBtn, {
-                    variant: "tonal",
+                    color: "primary",
                     block: "",
-                    class: "ss-touch",
-                    onClick: _cache[3] || (_cache[3] = $event => (moreJob(mediaDetail.value)))
+                    class: "ss-touch mt-3",
+                    disabled: !selectedFiles.value.length,
+                    onClick: submitSelected
                   }, {
-                    default: _withCtx(() => [...(_cache[29] || (_cache[29] = [
-                      _createTextVNode("更多", -1)
-                    ]))]),
+                    default: _withCtx(() => [
+                      _createTextVNode(" 提交识别（" + _toDisplayString(selectedFiles.value.length) + "） ", 1)
+                    ]),
                     _: 1
-                  })
+                  }, 8, ["disabled"])
                 ]))
               : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
                   _createVNode(_component_VTextField, {
                     modelValue: mediaQuery.value,
                     "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((mediaQuery).value = $event)),
-                    label: "搜索媒体",
+                    label: "搜索标题或文件名",
                     "prepend-inner-icon": "mdi-magnify",
                     class: "mb-3",
                     onKeyup: _withKeys(loadMedia, ["enter"])
                   }, null, 8, ["modelValue"]),
-                  _createElementVNode("div", _hoisted_9, [
+                  _createElementVNode("div", _hoisted_10, [
                     _createVNode(_component_VChip, {
                       color: !mediaType.value ? 'primary' : undefined,
                       onClick: _cache[5] || (_cache[5] = $event => {mediaType.value = ''; loadMedia();})
@@ -409,106 +540,72 @@ return (_ctx, _cache) => {
                       size: "small",
                       class: "ss-touch",
                       loading: loading.value,
-                      onClick: _cache[8] || (_cache[8] = $event => (pluginApi.value.refreshMedia().then(loadMedia)))
+                      onClick: refreshLibrary
                     }, {
                       default: _withCtx(() => [...(_cache[33] || (_cache[33] = [
-                        _createTextVNode("刷新目录", -1)
+                        _createTextVNode("拉取媒体库", -1)
                       ]))]),
                       _: 1
                     }, 8, ["loading"])
                   ]),
-                  (_unref(isMobile))
-                    ? (_openBlock(), _createBlock(_component_VList, { key: 0 }, {
-                        default: _withCtx(() => [
-                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(mediaItems.value, (item) => {
-                            return (_openBlock(), _createBlock(_component_VListItem, {
-                              key: item.id,
-                              class: "ss-card mb-2",
-                              onClick: $event => (mediaDetail.value = item)
-                            }, {
-                              append: _withCtx(() => [
-                                _createVNode(_component_VIcon, { icon: "mdi-chevron-right" })
-                              ]),
+                  _createElementVNode("div", _hoisted_11, "整理记录 " + _toDisplayString(mediaCounts.value.groups || 0) + " 部 · " + _toDisplayString(mediaCounts.value.files || 0) + " 个文件", 1),
+                  (!mediaGroups.value.length)
+                    ? (_openBlock(), _createBlock(_component_VAlert, {
+                        key: 0,
+                        type: "info",
+                        variant: "tonal",
+                        class: "mb-3"
+                      }, {
+                        default: _withCtx(() => [...(_cache[34] || (_cache[34] = [
+                          _createTextVNode(" 没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。 ", -1)
+                        ]))]),
+                        _: 1
+                      }))
+                    : _createCommentVNode("", true),
+                  _createVNode(_component_VList, null, {
+                    default: _withCtx(() => [
+                      (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(mediaGroups.value, (item) => {
+                        return (_openBlock(), _createBlock(_component_VListItem, {
+                          key: item.id,
+                          class: "ss-card mb-2",
+                          onClick: $event => (openGroup(item))
+                        }, {
+                          append: _withCtx(() => [
+                            _createVNode(_component_VIcon, { icon: "mdi-chevron-right" })
+                          ]),
+                          default: _withCtx(() => [
+                            _createVNode(_component_VListItemTitle, null, {
                               default: _withCtx(() => [
-                                _createVNode(_component_VListItemTitle, null, {
-                                  default: _withCtx(() => [
-                                    _createTextVNode(_toDisplayString(item.title), 1)
-                                  ]),
-                                  _: 2
-                                }, 1024),
-                                _createVNode(_component_VListItemSubtitle, null, {
-                                  default: _withCtx(() => [
-                                    _createTextVNode(_toDisplayString(item.type) + " · " + _toDisplayString(item.sidecars?.length || 0) + " 条外挂", 1)
-                                  ]),
-                                  _: 2
-                                }, 1024)
+                                _createTextVNode(_toDisplayString(item.title) + _toDisplayString(item.year ? ` (${item.year})` : ''), 1)
                               ]),
                               _: 2
-                            }, 1032, ["onClick"]))
-                          }), 128))
-                        ]),
-                        _: 1
-                      }))
-                    : (_openBlock(), _createBlock(_component_VTable, { key: 1 }, {
-                        default: _withCtx(() => [
-                          _cache[36] || (_cache[36] = _createElementVNode("thead", null, [
-                            _createElementVNode("tr", null, [
-                              _createElementVNode("th", null, "标题"),
-                              _createElementVNode("th", null, "类型"),
-                              _createElementVNode("th", null, "外挂"),
-                              _createElementVNode("th", null, "操作")
-                            ])
-                          ], -1)),
-                          _createElementVNode("tbody", null, [
-                            (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(mediaItems.value, (item) => {
-                              return (_openBlock(), _createElementBlock("tr", {
-                                key: item.id
-                              }, [
-                                _createElementVNode("td", null, _toDisplayString(item.title), 1),
-                                _createElementVNode("td", null, _toDisplayString(item.type), 1),
-                                _createElementVNode("td", null, _toDisplayString(item.sidecars?.length || 0), 1),
-                                _createElementVNode("td", null, [
-                                  _createVNode(_component_VBtn, {
-                                    size: "small",
-                                    class: "ss-touch",
-                                    onClick: $event => (enqueue(item))
-                                  }, {
-                                    default: _withCtx(() => [...(_cache[34] || (_cache[34] = [
-                                      _createTextVNode("入队", -1)
-                                    ]))]),
-                                    _: 1
-                                  }, 8, ["onClick"]),
-                                  _createVNode(_component_VBtn, {
-                                    size: "small",
-                                    variant: "text",
-                                    class: "ss-touch",
-                                    onClick: $event => (moreJob(item))
-                                  }, {
-                                    default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
-                                      _createTextVNode("更多", -1)
-                                    ]))]),
-                                    _: 1
-                                  }, 8, ["onClick"])
-                                ])
-                              ]))
-                            }), 128))
-                          ])
-                        ]),
-                        _: 1
-                      }))
+                            }, 1024),
+                            _createVNode(_component_VListItemSubtitle, null, {
+                              default: _withCtx(() => [
+                                _createTextVNode(_toDisplayString(item.type === 'tv' ? '剧集' : '电影') + " · " + _toDisplayString(item.file_count || item.files?.length || 0) + " 个文件 · " + _toDisplayString(item.library_name), 1)
+                              ]),
+                              _: 2
+                            }, 1024)
+                          ]),
+                          _: 2
+                        }, 1032, ["onClick"]))
+                      }), 128))
+                    ]),
+                    _: 1
+                  })
                 ], 64))
           ], 64))
         : (nav.value === 'jobs')
           ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
               _createVNode(_component_VTextField, {
                 modelValue: jobsQuery.value,
-                "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((jobsQuery).value = $event)),
+                "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((jobsQuery).value = $event)),
                 label: "搜索标题",
                 "prepend-inner-icon": "mdi-magnify",
                 class: "mb-3",
                 onKeyup: _withKeys(loadJobs, ["enter"])
               }, null, 8, ["modelValue"]),
-              _createElementVNode("div", _hoisted_10, [
+              _createElementVNode("div", _hoisted_12, [
                 (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['', 'pending', 'running', 'failed', 'success'], (item) => {
                   return _createVNode(_component_VChip, {
                     key: item || 'all',
@@ -537,7 +634,7 @@ return (_ctx, _cache) => {
                               class: "ss-touch",
                               onClick: $event => (cutIn(job))
                             }, {
-                              default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
+                              default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
                                 _createTextVNode("插队", -1)
                               ]))]),
                               _: 1
@@ -551,7 +648,7 @@ return (_ctx, _cache) => {
                               class: "ss-touch",
                               onClick: $event => (openJob(job))
                             }, {
-                              default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
+                              default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
                                 _createTextVNode("工作台", -1)
                               ]))]),
                               _: 1
@@ -587,9 +684,9 @@ return (_ctx, _cache) => {
           : (nav.value === 'desk')
             ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
                 (!activeJob.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_11, "从队列打开一个任务。"))
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_13, "从队列打开一个任务。"))
                   : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-                      _createElementVNode("div", _hoisted_12, _toDisplayString(activeJob.value.title), 1),
+                      _createElementVNode("div", _hoisted_14, _toDisplayString(activeJob.value.title), 1),
                       _createVNode(_sfc_main$1, {
                         graph: graph.value,
                         "current-ms": currentMs.value,
@@ -598,9 +695,9 @@ return (_ctx, _cache) => {
                         stack: config.value.lang_stack || 'main_bottom',
                         "video-url": pluginApi.value.previewVideoUrl(activeJob.value.job_id),
                         enabled: config.value.preview_enabled !== false,
-                        onTime: _cache[10] || (_cache[10] = $event => (currentMs.value = $event))
+                        onTime: _cache[9] || (_cache[9] = $event => (currentMs.value = $event))
                       }, null, 8, ["graph", "current-ms", "langs", "tracks", "stack", "video-url", "enabled"]),
-                      _createElementVNode("div", _hoisted_13, [
+                      _createElementVNode("div", _hoisted_15, [
                         (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['dialogue', 'notes', 'stacked', 'sdh'], (track) => {
                           return _createVNode(_component_VChip, {
                             key: track,
@@ -614,7 +711,7 @@ return (_ctx, _cache) => {
                           }, 1032, ["color", "onClick"])
                         }), 64))
                       ]),
-                      _cache[39] || (_cache[39] = _createElementVNode("div", { class: "text-caption mb-1" }, "按时间", -1)),
+                      _cache[37] || (_cache[37] = _createElementVNode("div", { class: "text-caption mb-1" }, "按时间", -1)),
                       _createElementVNode("div", {
                         class: "ss-timeline mb-4",
                         onClick: seekTimeline
@@ -626,7 +723,7 @@ return (_ctx, _cache) => {
                             class: "ss-cue",
                             style: _normalizeStyle({ left: cueLeft(cue), width: cueWidth(cue) }),
                             onClick: _withModifiers($event => {openCue(cue); currentMs.value = cue.start_ms;}, ["stop"])
-                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_14))
+                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_16))
                         }), 128))
                       ]),
                       _createVNode(_component_VList, null, {
@@ -661,21 +758,21 @@ return (_ctx, _cache) => {
             : (_openBlock(), _createElementBlock(_Fragment, { key: 3 }, [
                 _createVNode(_sfc_main$2, {
                   modelValue: config.value,
-                  "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((config).value = $event)),
+                  "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((config).value = $event)),
                   fields: fields.value,
                   mobile: _unref(isMobile),
-                  onDirty: _cache[12] || (_cache[12] = $event => (dirty.value = true)),
-                  onTestEndpoint: _cache[13] || (_cache[13] = $event => (pluginApi.value.testEndpoint($event))),
-                  onListModels: _cache[14] || (_cache[14] = $event => (pluginApi.value.listModels($event)))
+                  onDirty: _cache[11] || (_cache[11] = $event => (dirty.value = true)),
+                  onTestEndpoint: _cache[12] || (_cache[12] = $event => (pluginApi.value.testEndpoint($event))),
+                  onListModels: _cache[13] || (_cache[13] = $event => (pluginApi.value.listModels($event)))
                 }, null, 8, ["modelValue", "fields", "mobile"]),
                 (dirty.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_15, [
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
                       _createVNode(_component_VBtn, {
                         color: "primary",
                         class: "ss-touch",
                         onClick: saveConfig
                       }, {
-                        default: _withCtx(() => [...(_cache[40] || (_cache[40] = [
+                        default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
                           _createTextVNode("保存", -1)
                         ]))]),
                         _: 1
@@ -683,9 +780,9 @@ return (_ctx, _cache) => {
                       _createVNode(_component_VBtn, {
                         variant: "text",
                         class: "ss-touch",
-                        onClick: _cache[15] || (_cache[15] = $event => (reload()))
+                        onClick: _cache[14] || (_cache[14] = $event => (reload()))
                       }, {
-                        default: _withCtx(() => [...(_cache[41] || (_cache[41] = [
+                        default: _withCtx(() => [...(_cache[39] || (_cache[39] = [
                           _createTextVNode("恢复", -1)
                         ]))]),
                         _: 1
@@ -696,7 +793,7 @@ return (_ctx, _cache) => {
     ]),
     _createVNode(_component_VBottomSheet, {
       modelValue: jobSheet.value,
-      "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((jobSheet).value = $event)),
+      "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((jobSheet).value = $event)),
       inset: "",
       rounded: "t-xl"
     }, {
@@ -715,37 +812,37 @@ return (_ctx, _cache) => {
                   ? (_openBlock(), _createBlock(_component_VListItem, {
                       key: 0,
                       title: "打开工作台",
-                      onClick: _cache[16] || (_cache[16] = $event => {openJob(activeJob.value); jobSheet.value = false;})
+                      onClick: _cache[15] || (_cache[15] = $event => {openJob(activeJob.value); jobSheet.value = false;})
                     }))
                   : _createCommentVNode("", true),
                 (activeJob.value?.status === 'pending')
                   ? (_openBlock(), _createBlock(_component_VListItem, {
                       key: 1,
                       title: "插队",
-                      onClick: _cache[17] || (_cache[17] = $event => {cutIn(activeJob.value); jobSheet.value = false;})
+                      onClick: _cache[16] || (_cache[16] = $event => {cutIn(activeJob.value); jobSheet.value = false;})
                     }))
                   : _createCommentVNode("", true),
                 _createVNode(_component_VListItem, {
                   title: "改成 P0",
-                  onClick: _cache[18] || (_cache[18] = $event => {changePriority(activeJob.value, 'P0'); jobSheet.value = false;})
+                  onClick: _cache[17] || (_cache[17] = $event => {changePriority(activeJob.value, 'P0'); jobSheet.value = false;})
                 }),
                 _createVNode(_component_VListItem, {
                   title: "改成 P1",
-                  onClick: _cache[19] || (_cache[19] = $event => {changePriority(activeJob.value, 'P1'); jobSheet.value = false;})
+                  onClick: _cache[18] || (_cache[18] = $event => {changePriority(activeJob.value, 'P1'); jobSheet.value = false;})
                 }),
                 _createVNode(_component_VListItem, {
                   title: "改成 P2",
-                  onClick: _cache[20] || (_cache[20] = $event => {changePriority(activeJob.value, 'P2'); jobSheet.value = false;})
+                  onClick: _cache[19] || (_cache[19] = $event => {changePriority(activeJob.value, 'P2'); jobSheet.value = false;})
                 }),
                 _createVNode(_component_VListItem, {
                   title: "取消",
-                  onClick: _cache[21] || (_cache[21] = $event => {cancelJob(activeJob.value); jobSheet.value = false;})
+                  onClick: _cache[20] || (_cache[20] = $event => {cancelJob(activeJob.value); jobSheet.value = false;})
                 }),
                 (activeJob.value?.path && !activeJob.value?.job_id)
                   ? (_openBlock(), _createBlock(_component_VListItem, {
                       key: 2,
                       title: "入队",
-                      onClick: _cache[22] || (_cache[22] = $event => {enqueue(activeJob.value); jobSheet.value = false;})
+                      onClick: _cache[21] || (_cache[21] = $event => {enqueue(activeJob.value); jobSheet.value = false;})
                     }))
                   : _createCommentVNode("", true)
               ]),
@@ -767,14 +864,15 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, { class: "pa-4" }, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, null, {
-              default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
-                _createTextVNode("入队", -1)
+              default: _withCtx(() => [...(_cache[40] || (_cache[40] = [
+                _createTextVNode("手动提交识别", -1)
               ]))]),
               _: 1
             }),
+            _createElementVNode("div", _hoisted_18, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
             _createVNode(_component_VSelect, {
               modelValue: enqueueForm.strategy,
-              "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((enqueueForm.strategy) = $event)),
+              "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((enqueueForm.strategy) = $event)),
               label: "本次策略",
               items: [
           { title: '先搜后译', value: 'search_then_translate' },
@@ -784,21 +882,29 @@ return (_ctx, _cache) => {
             }, null, 8, ["modelValue"]),
             _createVNode(_component_VSelect, {
               modelValue: enqueueForm.priority,
-              "onUpdate:modelValue": _cache[25] || (_cache[25] = $event => ((enqueueForm.priority) = $event)),
+              "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((enqueueForm.priority) = $event)),
               label: "优先级",
               items: ['P0', 'P1', 'P2']
+            }, null, 8, ["modelValue"]),
+            _createVNode(_component_VSwitch, {
+              modelValue: enqueueForm.force,
+              "onUpdate:modelValue": _cache[25] || (_cache[25] = $event => ((enqueueForm.force) = $event)),
+              label: "强制入队（忽略已有中字等门禁）",
+              "hide-details": "",
+              class: "mb-2"
             }, null, 8, ["modelValue"]),
             _createVNode(_component_VBtn, {
               color: "primary",
               block: "",
               class: "ss-touch mt-2",
+              loading: submitting.value,
               onClick: confirmEnqueue
             }, {
-              default: _withCtx(() => [...(_cache[43] || (_cache[43] = [
-                _createTextVNode("确认入队", -1)
+              default: _withCtx(() => [...(_cache[41] || (_cache[41] = [
+                _createTextVNode("确认提交", -1)
               ]))]),
               _: 1
-            })
+            }, 8, ["loading"])
           ]),
           _: 1
         })
@@ -819,7 +925,7 @@ return (_ctx, _cache) => {
             }, {
               default: _withCtx(() => [
                 _createVNode(_component_VCardTitle, null, {
-                  default: _withCtx(() => [...(_cache[44] || (_cache[44] = [
+                  default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
                     _createTextVNode("编辑句子", -1)
                   ]))]),
                   _: 1
@@ -838,7 +944,7 @@ return (_ctx, _cache) => {
                   class: "ss-touch",
                   onClick: saveCue
                 }, {
-                  default: _withCtx(() => [...(_cache[45] || (_cache[45] = [
+                  default: _withCtx(() => [...(_cache[43] || (_cache[43] = [
                     _createTextVNode("写回", -1)
                   ]))]),
                   _: 1

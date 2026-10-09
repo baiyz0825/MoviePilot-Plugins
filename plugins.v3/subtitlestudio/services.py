@@ -26,6 +26,7 @@ class StudioServices:
             plugin.current_config,
             history_loader=plugin.host_history,
             library_roots=plugin.host_library_roots,
+            logger=plugin.host_logger,
         )
         self.searcher = OnlineSearchService(self.http, plugin.current_config(), plugin.host_logger)
         self.llm = LlmRouter(self.http, plugin.current_config(), plugin.host_logger)

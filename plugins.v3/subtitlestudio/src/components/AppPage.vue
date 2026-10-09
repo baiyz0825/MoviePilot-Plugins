@@ -26,8 +26,11 @@ const loading = ref(false)
 const dirty = ref(false)
 const mediaQuery = ref('')
 const mediaType = ref('')
-const mediaItems = ref([])
+const mediaGroups = ref([])
+const mediaCounts = ref({ files: 0, groups: 0 })
 const mediaDetail = ref(null)
+const selectedPaths = ref({})
+const submitting = ref(false)
 const jobsQuery = ref('')
 const jobStatus = ref('')
 const jobs = ref([])
@@ -41,7 +44,8 @@ const editingCue = ref(null)
 const config = ref({})
 const fields = ref([])
 const enqueueSheet = ref(false)
-const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0' })
+const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: true, items: [] })
+const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]))
 
 const tabs = [
   { value: 'media', title: '媒体', icon: 'mdi-filmstrip' },
@@ -70,7 +74,44 @@ async function reload() {
 
 async function loadMedia() {
   const data = await pluginApi.value.media(mediaQuery.value, mediaType.value)
-  mediaItems.value = data?.items || []
+  mediaGroups.value = data?.groups || []
+  mediaCounts.value = data?.counts || { files: 0, groups: 0 }
+}
+
+async function refreshLibrary() {
+  loading.value = true
+  try {
+    const data = await pluginApi.value.refreshMedia()
+    mediaGroups.value = data?.groups || []
+    mediaCounts.value = data?.counts || { files: 0, groups: 0 }
+    toast.success?.(`已拉取 ${mediaCounts.value.files || 0} 个媒体文件`)
+  } catch (error) {
+    toast.error?.(error?.message || '拉取媒体库失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function openGroup(group) {
+  mediaDetail.value = group
+  selectedPaths.value = Object.fromEntries((group.files || []).map(item => [item.path, true]))
+}
+
+function toggleFile(path, value) {
+  selectedPaths.value = { ...selectedPaths.value, [path]: value }
+}
+
+function toggleAll(value) {
+  selectedPaths.value = Object.fromEntries((mediaDetail.value?.files || []).map(item => [item.path, value]))
+}
+
+function fileLabel(item) {
+  if (item.type === 'tv' && item.season && item.episode) {
+    const season = String(item.season).padStart(2, '0')
+    const episode = String(item.episode).padStart(2, '0')
+    return `S${season}E${episode} · ${item.filename || item.path}`
+  }
+  return item.filename || item.path
 }
 
 async function loadJobs() {
@@ -85,23 +126,58 @@ async function saveConfig() {
 }
 
 async function enqueue(item) {
-  enqueueForm.path = item.path
-  enqueueForm.title = item.title
-  enqueueForm.media_source = item.media_source
-  enqueueForm.media_id = item.media_id
-  enqueueForm.tmdbid = item.tmdbid
-  enqueueForm.doubanid = item.doubanid
+  enqueueForm.items = item?.path ? [item] : selectedFiles.value
+  enqueueForm.path = item?.path || enqueueForm.items[0]?.path
+  enqueueForm.title = item?.title || mediaDetail.value?.title
+  enqueueForm.media_source = item?.media_source
+  enqueueForm.media_id = item?.media_id
+  enqueueForm.tmdbid = item?.tmdbid
+  enqueueForm.doubanid = item?.doubanid
+  enqueueForm.force = true
   if (isMobile.value && dialog) {
-    dialog({ title: '入队覆盖项', fullscreen: true, content: '选择本次策略后入队' })
+    dialog({ title: '手动提交识别', fullscreen: true, content: '选择本次策略后入队' })
   }
   enqueueSheet.value = true
 }
 
+async function submitSelected() {
+  if (!selectedFiles.value.length) {
+    toast.error?.('先勾选要识别的文件')
+    return
+  }
+  enqueueForm.items = selectedFiles.value
+  enqueueForm.force = true
+  enqueueSheet.value = true
+}
+
 async function confirmEnqueue() {
-  await pluginApi.value.createJob({ ...enqueueForm })
-  enqueueSheet.value = false
-  nav.value = 'jobs'
-  await loadJobs()
+  submitting.value = true
+  try {
+    const items = enqueueForm.items?.length ? enqueueForm.items : []
+    if (items.length > 1) {
+      await pluginApi.value.createJobs({
+        items,
+        strategy: enqueueForm.strategy,
+        priority: enqueueForm.priority,
+        force: enqueueForm.force,
+      })
+    } else {
+      const item = items[0] || enqueueForm
+      await pluginApi.value.createJob({
+        ...item,
+        strategy: enqueueForm.strategy,
+        priority: enqueueForm.priority,
+        force: enqueueForm.force,
+      })
+    }
+    enqueueSheet.value = false
+    nav.value = 'jobs'
+    await loadJobs()
+  } catch (error) {
+    toast.error?.(error?.message || '入队失败')
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function openJob(job) {
@@ -174,51 +250,57 @@ defineExpose({ reload, loadStatus: reload })
 
     <div class="pa-3">
       <template v-if="nav === 'media'">
-        <div v-if="isMobile && mediaDetail" class="mb-3">
+        <div v-if="mediaDetail" class="mb-3">
           <div class="d-flex align-center mb-3">
             <VBtn icon="mdi-arrow-left" class="ss-touch" @click="mediaDetail = null" />
-            <strong class="ms-2">{{ mediaDetail.title }}</strong>
+            <strong class="ms-2">{{ mediaDetail.title }}{{ mediaDetail.year ? ` (${mediaDetail.year})` : '' }}</strong>
           </div>
-          <div class="text-medium-emphasis mb-2">{{ mediaDetail.path }}</div>
-          <VBtn color="primary" block class="ss-touch mb-2" @click="enqueue(mediaDetail)">入队</VBtn>
-          <VBtn variant="tonal" block class="ss-touch" @click="moreJob(mediaDetail)">更多</VBtn>
+          <div class="text-medium-emphasis mb-2">{{ mediaDetail.library_name || 'MoviePilot 整理记录' }} · {{ mediaDetail.file_count || mediaDetail.files?.length || 0 }} 个文件</div>
+          <div class="d-flex ga-2 mb-3">
+            <VBtn size="small" variant="text" class="ss-touch" @click="toggleAll(true)">全选</VBtn>
+            <VBtn size="small" variant="text" class="ss-touch" @click="toggleAll(false)">清空</VBtn>
+          </div>
+          <VList>
+            <VListItem v-for="item in mediaDetail.files || []" :key="item.id || item.path">
+              <template #prepend>
+                <VCheckbox
+                  :model-value="!!selectedPaths[item.path]"
+                  hide-details
+                  @update:model-value="toggleFile(item.path, $event)"
+                />
+              </template>
+              <VListItemTitle>{{ fileLabel(item) }}</VListItemTitle>
+              <VListItemSubtitle>{{ item.sidecars?.length || 0 }} 条外挂{{ item.is_strm ? ' · STRM' : '' }}</VListItemSubtitle>
+            </VListItem>
+          </VList>
+          <VBtn color="primary" block class="ss-touch mt-3" :disabled="!selectedFiles.length" @click="submitSelected">
+            提交识别（{{ selectedFiles.length }}）
+          </VBtn>
         </div>
         <template v-else>
-          <VTextField v-model="mediaQuery" label="搜索媒体" prepend-inner-icon="mdi-magnify" class="mb-3" @keyup.enter="loadMedia" />
-          <div class="d-flex ga-2 mb-3 h-scroll">
+          <VTextField v-model="mediaQuery" label="搜索标题或文件名" prepend-inner-icon="mdi-magnify" class="mb-3" @keyup.enter="loadMedia" />
+          <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
             <VChip :color="!mediaType ? 'primary' : undefined" @click="mediaType = ''; loadMedia()">全部</VChip>
             <VChip :color="mediaType === 'movie' ? 'primary' : undefined" @click="mediaType = 'movie'; loadMedia()">电影</VChip>
             <VChip :color="mediaType === 'tv' ? 'primary' : undefined" @click="mediaType = 'tv'; loadMedia()">剧集</VChip>
-            <VBtn size="small" class="ss-touch" :loading="loading" @click="pluginApi.refreshMedia().then(loadMedia)">刷新目录</VBtn>
+            <VBtn size="small" class="ss-touch" :loading="loading" @click="refreshLibrary">拉取媒体库</VBtn>
           </div>
-          <VList v-if="isMobile">
+          <div class="text-medium-emphasis mb-3">整理记录 {{ mediaCounts.groups || 0 }} 部 · {{ mediaCounts.files || 0 }} 个文件</div>
+          <VAlert v-if="!mediaGroups.length" type="info" variant="tonal" class="mb-3">
+            没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。
+          </VAlert>
+          <VList>
             <VListItem
-              v-for="item in mediaItems"
+              v-for="item in mediaGroups"
               :key="item.id"
               class="ss-card mb-2"
-              @click="mediaDetail = item"
+              @click="openGroup(item)"
             >
-              <VListItemTitle>{{ item.title }}</VListItemTitle>
-              <VListItemSubtitle>{{ item.type }} · {{ item.sidecars?.length || 0 }} 条外挂</VListItemSubtitle>
+              <VListItemTitle>{{ item.title }}{{ item.year ? ` (${item.year})` : '' }}</VListItemTitle>
+              <VListItemSubtitle>{{ item.type === 'tv' ? '剧集' : '电影' }} · {{ item.file_count || item.files?.length || 0 }} 个文件 · {{ item.library_name }}</VListItemSubtitle>
               <template #append><VIcon icon="mdi-chevron-right" /></template>
             </VListItem>
           </VList>
-          <VTable v-else>
-            <thead>
-              <tr><th>标题</th><th>类型</th><th>外挂</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in mediaItems" :key="item.id">
-                <td>{{ item.title }}</td>
-                <td>{{ item.type }}</td>
-                <td>{{ item.sidecars?.length || 0 }}</td>
-                <td>
-                  <VBtn size="small" class="ss-touch" @click="enqueue(item)">入队</VBtn>
-                  <VBtn size="small" variant="text" class="ss-touch" @click="moreJob(item)">更多</VBtn>
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
         </template>
       </template>
 
@@ -316,14 +398,16 @@ defineExpose({ reload, loadStatus: reload })
 
     <VBottomSheet v-model="enqueueSheet" inset rounded="t-xl">
       <VCard class="pa-4">
-        <VCardTitle>入队</VCardTitle>
+        <VCardTitle>手动提交识别</VCardTitle>
+        <div class="text-medium-emphasis mb-2">将提交 {{ enqueueForm.items?.length || 1 }} 个文件</div>
         <VSelect v-model="enqueueForm.strategy" label="本次策略" :items="[
           { title: '先搜后译', value: 'search_then_translate' },
           { title: '只搜索', value: 'search_only' },
           { title: '只识别翻译', value: 'translate_only' },
         ]" />
         <VSelect v-model="enqueueForm.priority" label="优先级" :items="['P0', 'P1', 'P2']" />
-        <VBtn color="primary" block class="ss-touch mt-2" @click="confirmEnqueue">确认入队</VBtn>
+        <VSwitch v-model="enqueueForm.force" label="强制入队（忽略已有中字等门禁）" hide-details class="mb-2" />
+        <VBtn color="primary" block class="ss-touch mt-2" :loading="submitting" @click="confirmEnqueue">确认提交</VBtn>
       </VCard>
     </VBottomSheet>
 
