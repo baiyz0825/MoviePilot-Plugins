@@ -11,8 +11,9 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
-from ..ingest.gates import is_video_path
 from .identity import identity_from_v2_ids, identity_from_v3_pair
+
+VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".ts", ".m2ts", ".mov", ".wmv", ".m4v", ".flv", ".webm", ".strm"}
 
 NUMBER = re.compile(r"(\d+)")
 
@@ -121,7 +122,8 @@ def paths_from_history(entry: Dict[str, Any]) -> List[str]:
 
 
 def is_media_file(path: str) -> bool:
-    return is_video_path(path)
+    lower = str(path or "").lower()
+    return any(lower.endswith(suffix) for suffix in VIDEO_SUFFIXES)
 
 
 def identity_from_history(entry: Dict[str, Any]) -> Dict[str, str]:

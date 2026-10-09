@@ -62,3 +62,36 @@ def test_catalog_groups_history_for_manual_submit(tmp_path, gen: str = GEN):
     assert groups[0]["title"] == "沙丘"
     assert groups[0]["file_count"] == 1
     assert groups[0]["files"][0]["path"] == str(video)
+
+
+def test_sidecar_index_reads_directory_once(tmp_path, gen: str = GEN):
+    local = load_domain(gen, "providers.local")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    (tmp_path / "Movie.zh-Hans.srt").write_text("1", encoding="utf-8")
+    index = local.SidecarIndex()
+    first = index.for_path(str(video))
+    second = index.for_path(str(tmp_path / "Other.mkv"))
+    assert first[0]["filename"] == "Movie.zh-Hans.srt"
+    assert second == []
+    assert str(tmp_path) in index._dirs
+
+
+def test_catalog_skips_watch_scan_when_ingest_off(tmp_path, gen: str = GEN):
+    catalog_mod = load_domain(gen, "providers.catalog")
+    watch = tmp_path / "watch"
+    watch.mkdir()
+    (watch / "OnlyOnDisk.mkv").write_bytes(b"x")
+
+    catalog = catalog_mod.MediaCatalog(
+        lambda: {"ingest_on_watch": False, "watch_paths": str(watch), "trust_transfer_history": True},
+        history_loader=lambda limit=800: [],
+    )
+    assert catalog.list_media(force=True) == []
+
+    catalog = catalog_mod.MediaCatalog(
+        lambda: {"ingest_on_watch": True, "watch_paths": str(watch), "trust_transfer_history": True},
+        history_loader=lambda limit=800: [],
+    )
+    rows = catalog.list_media(force=True)
+    assert any(item["path"].endswith("OnlyOnDisk.mkv") for item in rows)

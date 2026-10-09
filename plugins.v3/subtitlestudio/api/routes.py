@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from ..core.config_schema import FIELDS, PANES, apply_export_preset, default_config, normalize_plugin_config
 from ..core.cuegraph import render_ass
+from ..core.history import group_media_items
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
 from ..core.response import fail, ok
 from ..ingest.gates import evaluate_gates
@@ -104,9 +105,8 @@ class StudioApiMixin:
 
     def api_list_media(self, q: str = "", media_type: str = "", force: bool = False) -> Dict[str, Any]:
         items = self.services.catalog.list_media(q=q, media_type=media_type, force=force)
-        groups = self.services.catalog.list_groups(q=q, media_type=media_type, force=False)
+        groups = group_media_items(items)
         return ok({
-            "items": items,
             "groups": groups,
             "counts": {"files": len(items), "groups": len(groups)},
             "source": "transfer_history",
@@ -165,7 +165,7 @@ class StudioApiMixin:
             }
             result = self.api_create_job(payload)
             envelope = result if isinstance(result, dict) else {}
-            job = envelope.get("data") if envelope.get("success") else envelope.get("data")
+            job = envelope.get("data")
             if envelope.get("success") and job:
                 created.append(job)
             else:

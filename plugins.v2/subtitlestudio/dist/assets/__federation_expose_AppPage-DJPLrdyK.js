@@ -90,7 +90,7 @@ return (_ctx, _cache) => {
 
 };
 
-const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
+const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,createSlots:_createSlots,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "plugin-root" };
@@ -113,22 +113,23 @@ const _hoisted_10 = {
   style: {"overflow-x":"auto"}
 };
 const _hoisted_11 = { class: "text-medium-emphasis mb-3" };
-const _hoisted_12 = {
+const _hoisted_12 = ["src"];
+const _hoisted_13 = {
   class: "d-flex ga-2 mb-3",
   style: {"overflow-x":"auto"}
 };
-const _hoisted_13 = {
+const _hoisted_14 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_14 = { class: "mb-2" };
-const _hoisted_15 = { class: "d-flex ga-2 my-3" };
-const _hoisted_16 = ["onClick"];
-const _hoisted_17 = {
+const _hoisted_15 = { class: "mb-2" };
+const _hoisted_16 = { class: "d-flex ga-2 my-3" };
+const _hoisted_17 = ["onClick"];
+const _hoisted_18 = {
   key: 0,
   class: "ss-savebar pa-3 d-flex ga-2"
 };
-const _hoisted_18 = { class: "text-medium-emphasis mb-2" };
+const _hoisted_19 = { class: "text-medium-emphasis mb-2" };
 
 const {computed,onMounted,reactive,ref} = await importShared('vue');
 
@@ -146,7 +147,7 @@ const _sfc_main = {
 
 const props = __props;
 const isMobile = useMobileViewport();
-const { toast, dialog, confirm } = useHostInjects();
+const { toast, confirm } = useHostInjects();
 const pluginBase = computed(() => `plugin/${props.pluginId || 'SubtitleStudio'}`);
 const pluginApi = computed(() => createStudioApi(props.api, pluginBase));
 
@@ -263,9 +264,6 @@ async function enqueue(item) {
   enqueueForm.tmdbid = item?.tmdbid;
   enqueueForm.doubanid = item?.doubanid;
   enqueueForm.force = true;
-  if (isMobile.value && dialog) {
-    dialog({ title: '手动提交识别', fullscreen: true, content: '选择本次策略后入队' });
-  }
   enqueueSheet.value = true;
 }
 
@@ -282,23 +280,13 @@ async function submitSelected() {
 async function confirmEnqueue() {
   submitting.value = true;
   try {
-    const items = enqueueForm.items?.length ? enqueueForm.items : [];
-    if (items.length > 1) {
-      await pluginApi.value.createJobs({
-        items,
-        strategy: enqueueForm.strategy,
-        priority: enqueueForm.priority,
-        force: enqueueForm.force,
-      });
-    } else {
-      const item = items[0] || enqueueForm;
-      await pluginApi.value.createJob({
-        ...item,
-        strategy: enqueueForm.strategy,
-        priority: enqueueForm.priority,
-        force: enqueueForm.force,
-      });
-    }
+    const items = enqueueForm.items?.length ? enqueueForm.items : [enqueueForm];
+    await pluginApi.value.createJobs({
+      items,
+      strategy: enqueueForm.strategy,
+      priority: enqueueForm.priority,
+      force: enqueueForm.force,
+    });
     enqueueSheet.value = false;
     nav.value = 'jobs';
     await loadJobs();
@@ -569,7 +557,7 @@ return (_ctx, _cache) => {
                           key: item.id,
                           class: "ss-card mb-2",
                           onClick: $event => (openGroup(item))
-                        }, {
+                        }, _createSlots({
                           append: _withCtx(() => [
                             _createVNode(_component_VIcon, { icon: "mdi-chevron-right" })
                           ]),
@@ -588,7 +576,23 @@ return (_ctx, _cache) => {
                             }, 1024)
                           ]),
                           _: 2
-                        }, 1032, ["onClick"]))
+                        }, [
+                          (item.poster)
+                            ? {
+                                name: "prepend",
+                                fn: _withCtx(() => [
+                                  _createElementVNode("img", {
+                                    src: item.poster,
+                                    alt: "",
+                                    width: "40",
+                                    height: "56",
+                                    style: {"object-fit":"cover","border-radius":"4px"}
+                                  }, null, 8, _hoisted_12)
+                                ]),
+                                key: "0"
+                              }
+                            : undefined
+                        ]), 1032, ["onClick"]))
                       }), 128))
                     ]),
                     _: 1
@@ -605,7 +609,7 @@ return (_ctx, _cache) => {
                 class: "mb-3",
                 onKeyup: _withKeys(loadJobs, ["enter"])
               }, null, 8, ["modelValue"]),
-              _createElementVNode("div", _hoisted_12, [
+              _createElementVNode("div", _hoisted_13, [
                 (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['', 'pending', 'running', 'failed', 'success'], (item) => {
                   return _createVNode(_component_VChip, {
                     key: item || 'all',
@@ -684,9 +688,9 @@ return (_ctx, _cache) => {
           : (nav.value === 'desk')
             ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
                 (!activeJob.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_13, "从队列打开一个任务。"))
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_14, "从队列打开一个任务。"))
                   : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-                      _createElementVNode("div", _hoisted_14, _toDisplayString(activeJob.value.title), 1),
+                      _createElementVNode("div", _hoisted_15, _toDisplayString(activeJob.value.title), 1),
                       _createVNode(_sfc_main$1, {
                         graph: graph.value,
                         "current-ms": currentMs.value,
@@ -697,7 +701,7 @@ return (_ctx, _cache) => {
                         enabled: config.value.preview_enabled !== false,
                         onTime: _cache[9] || (_cache[9] = $event => (currentMs.value = $event))
                       }, null, 8, ["graph", "current-ms", "langs", "tracks", "stack", "video-url", "enabled"]),
-                      _createElementVNode("div", _hoisted_15, [
+                      _createElementVNode("div", _hoisted_16, [
                         (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['dialogue', 'notes', 'stacked', 'sdh'], (track) => {
                           return _createVNode(_component_VChip, {
                             key: track,
@@ -723,7 +727,7 @@ return (_ctx, _cache) => {
                             class: "ss-cue",
                             style: _normalizeStyle({ left: cueLeft(cue), width: cueWidth(cue) }),
                             onClick: _withModifiers($event => {openCue(cue); currentMs.value = cue.start_ms;}, ["stop"])
-                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_16))
+                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_17))
                         }), 128))
                       ]),
                       _createVNode(_component_VList, null, {
@@ -766,7 +770,7 @@ return (_ctx, _cache) => {
                   onListModels: _cache[13] || (_cache[13] = $event => (pluginApi.value.listModels($event)))
                 }, null, 8, ["modelValue", "fields", "mobile"]),
                 (dirty.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
                       _createVNode(_component_VBtn, {
                         color: "primary",
                         class: "ss-touch",
@@ -869,7 +873,7 @@ return (_ctx, _cache) => {
               ]))]),
               _: 1
             }),
-            _createElementVNode("div", _hoisted_18, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
+            _createElementVNode("div", _hoisted_19, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
             _createVNode(_component_VSelect, {
               modelValue: enqueueForm.strategy,
               "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((enqueueForm.strategy) = $event)),

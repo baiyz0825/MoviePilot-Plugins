@@ -17,7 +17,7 @@ const props = defineProps({
 
 const emit = defineEmits(['action'])
 const isMobile = useMobileViewport()
-const { toast, dialog, confirm } = useHostInjects()
+const { toast, confirm } = useHostInjects()
 const pluginBase = computed(() => `plugin/${props.pluginId || 'SubtitleStudio'}`)
 const pluginApi = computed(() => createStudioApi(props.api, pluginBase))
 
@@ -134,9 +134,6 @@ async function enqueue(item) {
   enqueueForm.tmdbid = item?.tmdbid
   enqueueForm.doubanid = item?.doubanid
   enqueueForm.force = true
-  if (isMobile.value && dialog) {
-    dialog({ title: '手动提交识别', fullscreen: true, content: '选择本次策略后入队' })
-  }
   enqueueSheet.value = true
 }
 
@@ -153,23 +150,13 @@ async function submitSelected() {
 async function confirmEnqueue() {
   submitting.value = true
   try {
-    const items = enqueueForm.items?.length ? enqueueForm.items : []
-    if (items.length > 1) {
-      await pluginApi.value.createJobs({
-        items,
-        strategy: enqueueForm.strategy,
-        priority: enqueueForm.priority,
-        force: enqueueForm.force,
-      })
-    } else {
-      const item = items[0] || enqueueForm
-      await pluginApi.value.createJob({
-        ...item,
-        strategy: enqueueForm.strategy,
-        priority: enqueueForm.priority,
-        force: enqueueForm.force,
-      })
-    }
+    const items = enqueueForm.items?.length ? enqueueForm.items : [enqueueForm]
+    await pluginApi.value.createJobs({
+      items,
+      strategy: enqueueForm.strategy,
+      priority: enqueueForm.priority,
+      force: enqueueForm.force,
+    })
     enqueueSheet.value = false
     nav.value = 'jobs'
     await loadJobs()
@@ -296,6 +283,9 @@ defineExpose({ reload, loadStatus: reload })
               class="ss-card mb-2"
               @click="openGroup(item)"
             >
+              <template v-if="item.poster" #prepend>
+                <img :src="item.poster" alt="" width="40" height="56" style="object-fit:cover;border-radius:4px" />
+              </template>
               <VListItemTitle>{{ item.title }}{{ item.year ? ` (${item.year})` : '' }}</VListItemTitle>
               <VListItemSubtitle>{{ item.type === 'tv' ? '剧集' : '电影' }} · {{ item.file_count || item.files?.length || 0 }} 个文件 · {{ item.library_name }}</VListItemSubtitle>
               <template #append><VIcon icon="mdi-chevron-right" /></template>

@@ -14,7 +14,7 @@ from ..core.identity import media_item_id
 from ..core.logging import studio_log
 from ..core.paths import parse_multiline_paths
 from ..ingest.gates import is_strm_path, is_video_path
-from .local import list_sidecars
+from .local import SidecarIndex
 
 
 class MediaCatalog:
@@ -60,13 +60,14 @@ class MediaCatalog:
     def _collect(self) -> List[Dict[str, Any]]:
         config = self.config_getter() or {}
         items: List[Dict[str, Any]] = []
-        history_items = self._from_history(config)
+        index = SidecarIndex()
+        history_items = self._from_history(config, index)
         items.extend(history_items)
-        # 目录扫描只补监控路径，不要默认把整个 LIBRARY_PATHS rglob 一遍。
-        if config.get("ingest_on_watch") or parse_multiline_paths(config.get("watch_paths")):
-            items.extend(self._from_disk(config))
+        # 只在监控开关打开时扫盘。填了路径但没开开关，不该把整库 rglob 一遍。
+        if config.get("ingest_on_watch"):
+            items.extend(self._from_disk(config, index))
         if config.get("strm_enabled"):
-            items.extend(self._from_strm(config))
+            items.extend(self._from_strm(config, index))
         deduped = {}
         for item in items:
             deduped[item["id"]] = item
@@ -80,7 +81,7 @@ class MediaCatalog:
         )
         return rows
 
-    def _from_history(self, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _from_history(self, config: Dict[str, Any], index: SidecarIndex) -> List[Dict[str, Any]]:
         if not self.history_loader:
             return []
         try:
@@ -98,10 +99,10 @@ class MediaCatalog:
                 continue
             if not config.get("trust_transfer_history") and not Path(path).exists():
                 continue
-            rows.append(self._item(path, entry.get("title") or Path(path).stem, entry, extra=entry))
+            rows.append(self._item(path, entry.get("title") or Path(path).stem, entry, extra=entry, index=index))
         return rows
 
-    def _from_disk(self, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _from_disk(self, config: Dict[str, Any], index: SidecarIndex) -> List[Dict[str, Any]]:
         roots = parse_multiline_paths(config.get("watch_paths"))
         rows = []
         for root in roots:
@@ -111,22 +112,23 @@ class MediaCatalog:
             for item in base.rglob("*"):
                 if not item.is_file() or not is_video_path(str(item)):
                     continue
-                rows.append(self._item(str(item), item.stem, {}, {"origin": "watch", "library_name": "监控目录", "filename": item.name}))
+                rows.append(self._item(str(item), item.stem, {}, {"origin": "watch", "library_name": "监控目录", "filename": item.name}, index=index))
         return rows
 
-    def _from_strm(self, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _from_strm(self, config: Dict[str, Any], index: SidecarIndex) -> List[Dict[str, Any]]:
         rows = []
         for root in parse_multiline_paths(config.get("strm_paths")):
             base = Path(root)
             if not base.is_dir():
                 continue
             for item in base.rglob("*.strm"):
-                rows.append(self._item(str(item), item.stem, {}, {"origin": "strm", "library_name": "STRM 目录", "filename": item.name, "type": "movie"}))
+                rows.append(self._item(str(item), item.stem, {}, {"origin": "strm", "library_name": "STRM 目录", "filename": item.name, "type": "movie"}, index=index))
         return rows
 
-    def _item(self, path: str, title: str, identity: Dict[str, str], extra: Dict[str, Any]) -> Dict[str, Any]:
+    def _item(self, path: str, title: str, identity: Dict[str, str], extra: Dict[str, Any], index: SidecarIndex | None = None) -> Dict[str, Any]:
         identity = identity or {}
         media_type = extra.get("type") or extra.get("media_type") or ("tv" if extra.get("season") else "movie")
+        sidecars = (index or SidecarIndex()).for_path(path)
         return {
             "id": media_item_id(identity, path),
             "title": title,
@@ -138,7 +140,7 @@ class MediaCatalog:
             "episode": extra.get("episode"),
             "poster": extra.get("poster") or extra.get("image") or "",
             "is_strm": is_strm_path(path),
-            "sidecars": list_sidecars(path),
+            "sidecars": sidecars,
             "origin": extra.get("origin") or "transfer_history",
             "library_name": extra.get("library_name") or "MoviePilot 整理记录",
             "media_key": extra.get("media_key") or media_item_id(identity, title),
