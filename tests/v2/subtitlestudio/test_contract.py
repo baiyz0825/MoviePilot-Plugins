@@ -16,16 +16,28 @@ def test_v2_index_and_class_version_match():
     package = json.loads((ROOT / "package.v2.json").read_text(encoding="utf-8"))
     plugin_pkg = json.loads((plugin_root(GEN) / "package.json").read_text(encoding="utf-8"))
     meta = package["SubtitleStudio"]
-    assert meta["version"] == "1.0.0"
+    assert meta["version"] == "1.0.1"
     assert meta["v3"] is False
     assert meta["system_version"] == ">=2.13.5"
     assert meta["release"] is True
+    assert "v1.0.1" in meta["history"]
     assert "v1.0.0" in meta["history"]
-    assert plugin_pkg["version"] == "1.0.0"
+    assert plugin_pkg["version"] == "1.0.1"
     init = _source("__init__.py")
-    assert 'plugin_version = "1.0.0"' in init
+    assert 'plugin_version = "1.0.1"' in init
     assert 'from app.plugins import _PluginBase' in init
     assert "app.sdk" not in init
+
+
+def test_v2_release_tree_includes_api_package():
+    root = plugin_root(GEN)
+    assert (root / "api" / "__init__.py").is_file()
+    assert (root / "api" / "routes.py").is_file()
+    assert (root / "api" / "schemas.py").is_file()
+    module = load_plugin_package(GEN)
+    assert module.StudioApiMixin is not None
+    assert callable(module.build_api_routes)
+    assert callable(module.finalize_api_routes)
 
 
 def test_v2_host_adapter_does_not_import_sdk():

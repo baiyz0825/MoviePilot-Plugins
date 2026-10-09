@@ -99,7 +99,7 @@ V3 `pyproject.toml` 不要写死 `version`。两边都改就各升一号（`1.0.
 python .github/scripts/check_plugin_versions.py package.json package.v2.json package.v3.json
 ```
 
-`"release": true` 且索引变更后，Actions 打 `subtitlestudio_v版本.zip` 和 Tag `SubtitleStudio_v版本`。
+`"release": true` 且索引变更后，Actions 打 `subtitlestudio_v版本.zip` 和 Tag `SubtitleStudio_v版本`。仓库必须能跑 GitHub Actions；没有对应 Release 时，宿主会按 release 路径安装失败或只落到部分文件，加载报 `No module named 'app.plugins.subtitlestudio.api'`。同版本 Tag 已存在时工作流会跳过，要重打同一版用 `force=true`。
 
 ## 测试
 

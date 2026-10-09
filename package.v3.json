@@ -3,7 +3,7 @@
         "name": "字幕工坊",
         "description": "独立完成字幕搜索、识别、免费/大模型翻译、特效顶注、导出包和工作台预览，不委托其它字幕插件。",
         "labels": "字幕,翻译,ASR,工作台",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "icon": "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg",
         "author": "baiyz0825",
         "author_url": "https://github.com/baiyz0825",
@@ -11,6 +11,7 @@
         "system_version": ">=3.0.0",
         "release": true,
         "history": {
+            "v2.0.1": "补发完整 Release 包，避免市场只落到入口文件后因缺少 api 子包无法加载",
             "v2.0.0": "新增字幕工坊 V3：SDK 基类、media_source+media_id、HTTPX2、add_plugin_once_job，产品合同与 V2 相同"
         }
     }

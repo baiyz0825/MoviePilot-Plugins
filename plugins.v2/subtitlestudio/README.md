@@ -2,10 +2,10 @@
 
 独立完成字幕搜索、识别、免费引擎 / 大模型翻译、特效顶注和工作台预览。不委托其它字幕插件。本仓库已下架海拉鲁字幕大师和 AutoSubv3。
 
-- 版本：`1.0.0`
+- 版本：`1.0.1`
 - 宿主：MoviePilot `>=2.13.5`
 - 索引：`package.v2.json`，必须 `"v3": false`
-- 发布包：`subtitlestudio_v1.0.0.zip`，Tag `SubtitleStudio_v1.0.0`
+- 发布包：`subtitlestudio_v1.0.1.zip`，Tag `SubtitleStudio_v1.0.1`
 
 产品合同、四个一级页、FIELDS、CueGraph、导出包与 [V3 副本](../../plugins.v3/subtitlestudio/README.md) 相同，只是宿主接口不同。
 
