@@ -7,9 +7,18 @@
 
 V2 和 V3 的页面、配置字段、导出命名和任务行为一致。差别只在插件内部对接的 MoviePilot 接口：V2 用 `app.plugins` / `httpx` / `tmdbid`，V3 用 `app.sdk` / `httpx2` / `media_source+media_id`。
 
-字幕工坊是独立插件，**不委托**海拉鲁字幕大师或 AI字幕生成。搜索、识别、翻译、特效顶注、导出和工作台预览都在本插件内完成。旧插件可以继续单独使用，互不影响。
+字幕工坊是独立插件，**不委托**其它字幕插件。搜索、识别、翻译、特效顶注、导出和工作台预览都在本插件内完成。本仓库已下架海拉鲁字幕大师和 AutoSubv3，安装本插件即可。
 
-设计说明见 [subtitle-studio-v1.html](subtitle-studio-v1.html)。
+相关文档：
+
+- 本页：使用教学
+- [V1 设计说明](subtitle-studio-v1.html)：功能对比、FIELDS、页面稿、开发约定
+- [宿主边界](call-graphs/subtitle-studio-host.html)
+- [入库链路](call-graphs/subtitle-studio-ingest.html)
+- [任务处理](call-graphs/subtitle-studio-job.html)
+- [任务生命周期](call-graphs/subtitle-studio-job-lifecycle.html)
+- [生成流水线](call-graphs/subtitle-studio-pipeline.html)
+- 仓库说明：[根 README](../README.md) · [V2](../plugins.v2/subtitlestudio/README.md) · [V3](../plugins.v3/subtitlestudio/README.md)
 
 ## 一、安装插件
 
@@ -39,7 +48,7 @@ https://github.com/ifsherlock/MoviePilot-Plugins
 
 | 页 | 做什么 |
 | --- | --- |
-| 媒体 | 按整理记录 / 目录列出片子，点整张卡片进详情，再入队 |
+| 媒体 | 拉取整理记录，按目录列出片子；勾选后「提交识别」，或点整张卡片进详情再入队 |
 | 队列 | 看 P0 / P1 / P2，搜索标题，插队、改优先级、取消、重试 |
 | 工作台 | 按时间轴改 cue，挂载视频看实际字幕效果 |
 | 设置 | 完整 FIELDS，控件下有「干什么 / 开了会怎样」 |
@@ -63,7 +72,9 @@ https://github.com/ifsherlock/MoviePilot-Plugins
 
 ### 任务完成通知
 
-成功或失败时走 MoviePilot 通知渠道。剧集多时建议关，避免刷屏。
+默认关。打开后走 MoviePilot 已配置的通知渠道，类型是「插件」。
+
+「通知哪些结果」默认勾成功和失败，也可加跳过、取消。剧集多时建议只勾失败，或整项关掉。渠道要在 MoviePilot「通知」里启用，并允许「插件」类型。
 
 ## 四、入库与监控
 
@@ -115,14 +126,19 @@ STRM 另有开关。STRM **不做 ASR、不调轴**（没有本地音轨）。�
 
 叠行默认「主下小上」。可改成「主上小下」。
 
-导出预设：
+导出预设（只改默认语言码和勾选，不是最终文件清单）：
 
-- 媒体库中文：`Movie.zh-Hans.default.srt`
-- Plex：`chi`，不标 default
-- 网页 / Infuse：再勾 VTT
+- 媒体库 / MoviePilot：`default.chi.zh-cn`，对齐整理记录
+- Plex：`chi` / `eng`，不标 default
+- 飞牛影视：`chs`（飞牛不认 `zh-Hans`）
+- Infuse / 网页：`zh-CN`，并再勾 VTT
 - 兼容旧库：`chi` / `chi&eng`
 
-版式可多选：单语 / 叠行 / 分轨。格式可多选：SRT / ASS / VTT。V1 **不生成** SUB/IDX/PGS。
+版式可多选：单语 / 叠行 / 分轨。格式可多选：SRT / ASS / VTT。**不生成** SUB/IDX/PGS。
+
+### ASS 样式
+
+设置页可改字体、主色、描边、多行小字号，带叠行预览。样式只写入 ASS；SRT / VTT 由播放器自己排版。
 
 覆盖策略：跳过 / 备份后替换 / 直接覆盖。
 
@@ -194,8 +210,8 @@ STRM 另有开关。STRM **不做 ASR、不调轴**（没有本地音轨）。�
 
 ## 十一、常见问题
 
-**和海拉鲁 / AutoSub 一起装会抢活吗？**  
-不会委托它们。如果三套都开自动入库，同一部片子可能被处理三次。建议自动入队只开一套。
+**还要装海拉鲁或 AutoSub 吗？**  
+不用。本仓库已下架这两个插件，字幕工坊自己完成搜索到导出。其它来源如果还装着旧插件，不要同时开自动入库，避免同一部片子被处理两次。
 
 **为什么 STRM 没有识别？**  
 STRM 没有本地音轨，识别和调轴被硬跳过。只能搜外挂。
