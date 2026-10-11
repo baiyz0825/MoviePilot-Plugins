@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS plugin_subtitlestudio_jobs (
     started_at TEXT,
     finished_at TEXT,
     queue_rank INTEGER,
+    progress INTEGER DEFAULT 0,
+    stage TEXT,
+    stage_detail TEXT,
     payload TEXT
 );
 CREATE TABLE IF NOT EXISTS plugin_subtitlestudio_cues (
@@ -71,6 +74,11 @@ class JobStore:
     def _ensure(self) -> None:
         with self._lock, self._connect() as conn:
             conn.executescript(SCHEMA)
+            for col, decl in (("progress", "INTEGER DEFAULT 0"), ("stage", "TEXT"), ("stage_detail", "TEXT")):
+                try:
+                    conn.execute(f"ALTER TABLE plugin_subtitlestudio_jobs ADD COLUMN {col} {decl}")
+                except Exception:
+                    pass
 
     def save_job(self, job: Job) -> Job:
         job.plugin_id = self.plugin_id
@@ -84,8 +92,8 @@ class JobStore:
                 INSERT INTO plugin_subtitlestudio_jobs (
                     job_id, plugin_id, title, path, media_source, media_id, tmdbid, doubanid,
                     priority, status, trigger, strategy, is_strm, error, created_at, updated_at,
-                    started_at, finished_at, queue_rank, payload
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    started_at, finished_at, queue_rank, progress, stage, stage_detail, payload
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     title=excluded.title, path=excluded.path, media_source=excluded.media_source,
                     media_id=excluded.media_id, tmdbid=excluded.tmdbid, doubanid=excluded.doubanid,
@@ -93,13 +101,14 @@ class JobStore:
                     strategy=excluded.strategy, is_strm=excluded.is_strm, error=excluded.error,
                     updated_at=excluded.updated_at, started_at=excluded.started_at,
                     finished_at=excluded.finished_at, queue_rank=excluded.queue_rank,
+                    progress=excluded.progress, stage=excluded.stage, stage_detail=excluded.stage_detail,
                     payload=excluded.payload
                 """,
                 (
                     job.job_id, job.plugin_id, job.title, job.path, job.media_source, job.media_id,
                     job.tmdbid, job.doubanid, job.priority, job.status, job.trigger, job.strategy,
                     1 if job.is_strm else 0, job.error, job.created_at, job.updated_at,
-                    job.started_at, job.finished_at, job.queue_rank, payload,
+                    job.started_at, job.finished_at, job.queue_rank, job.progress, job.stage, job.stage_detail, payload,
                 ),
             )
         return job
@@ -234,5 +243,8 @@ class JobStore:
             "started_at": row["started_at"],
             "finished_at": row["finished_at"],
             "queue_rank": row["queue_rank"],
+            "progress": int(row["progress"] or 0),
+            "stage": row["stage"] or "",
+            "stage_detail": row["stage_detail"] or "",
             "payload": payload,
         })

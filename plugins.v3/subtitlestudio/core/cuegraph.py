@@ -216,11 +216,10 @@ def render_ass(
         ass_style_line("Default", spec, size=used_sizes[0], color=spec["primary_color"], alignment=2, margin_v=spec["margin_v"])
     ]
     for index, size in enumerate(used_sizes, start=1):
+        # 叠行同侧对齐：main_bottom 全底部（主在下，副递增在上方），main_top 全顶部（主在上，副递增在下方）
         alignment = 2 if stack == "main_bottom" else 8
-        if index > 1:
-            alignment = 8 if stack == "main_bottom" else 2
         gap = spec["line_gap"]
-        margin_v = spec["margin_v"] + (index - 1) * gap if stack == "main_bottom" else spec["margin_v"] + (len(used_sizes) - index) * gap
+        margin_v = spec["margin_v"] + (index - 1) * gap
         styles.append(
             ass_style_line(f"Lang{index}", spec, size=size, color=spec["primary_color"], alignment=alignment, margin_v=margin_v)
         )

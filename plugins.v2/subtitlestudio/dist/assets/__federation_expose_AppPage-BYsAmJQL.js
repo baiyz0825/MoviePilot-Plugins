@@ -52,9 +52,11 @@ function textOf(cue, lang) {
 function lineStyle(index, kind = 'dialogue') {
   const css = overlayCss(props.styleConfig, index, kind);
   if (kind === 'note') return css
-  if (props.stack === 'main_top' && index === 0) {
-    return { ...css, top: '72px', bottom: 'auto' }
+  if (props.stack === 'main_top') {
+    // 主上小下：所有语言顶部定位，主在最上，副/再次递增往下
+    return { ...css, top: `${18 + index * 30}px`, bottom: 'auto' }
   }
+  // main_bottom：CSS 默认 bottom 递增，主在底，副在上方
   return css
 }
 
@@ -130,16 +132,29 @@ const _hoisted_13 = {
 };
 const _hoisted_14 = {
   key: 0,
+  class: "mt-1 w-100"
+};
+const _hoisted_15 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_16 = {
+  key: 1,
+  class: "mt-2 pa-2 rounded bg-grey-lighten-4 text-caption"
+};
+const _hoisted_17 = {
+  key: 0,
+  class: "text-error"
+};
+const _hoisted_18 = {
+  key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_15 = { class: "mb-2" };
-const _hoisted_16 = { class: "d-flex ga-2 my-3" };
-const _hoisted_17 = ["onClick"];
-const _hoisted_18 = {
+const _hoisted_19 = { class: "mb-2" };
+const _hoisted_20 = { class: "d-flex ga-2 my-3" };
+const _hoisted_21 = ["onClick"];
+const _hoisted_22 = {
   key: 0,
   class: "ss-savebar pa-3 d-flex ga-2"
 };
-const _hoisted_19 = { class: "text-medium-emphasis mb-2" };
+const _hoisted_23 = { class: "text-medium-emphasis mb-2" };
 
 const {computed,onMounted,reactive,ref} = await importShared('vue');
 
@@ -187,6 +202,22 @@ const fields = ref([]);
 const enqueueSheet = ref(false);
 const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: true, items: [] });
 const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]));
+
+const STATUS_LABELS = { pending: '等待', running: '运行中', success: '成功', failed: '失败', skipped: '跳过', cancelled: '已取消' };
+const TRIGGER_LABELS = { event: '事件', watch: '监控', strm: 'STRM', manual: '手动', workflow: '工作流', command: '命令' };
+const TRACK_LABELS = { dialogue: '对白', notes: '顶注', stacked: '叠行', sdh: 'SDH' };
+const statusFilters = [
+  { value: '', label: '全部' },
+  { value: 'pending', label: '等待' },
+  { value: 'running', label: '运行中' },
+  { value: 'failed', label: '失败' },
+  { value: 'success', label: '成功' },
+];
+const expandedJob = ref(null);
+function statusLabel(s) { return STATUS_LABELS[s] || s }
+function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
+function trackLabel(t) { return TRACK_LABELS[t] || t }
+function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id; }
 
 const tabs = [
   { value: 'media', title: '媒体', icon: 'mdi-filmstrip' },
@@ -255,9 +286,14 @@ function fileLabel(item) {
   return item.filename || item.path
 }
 
+let pollTimer = null;
 async function loadJobs() {
   const data = await pluginApi.value.jobs(jobsQuery.value, jobStatus.value);
   jobs.value = data?.items || [];
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (jobs.value.some(j => j.status === 'running')) {
+    pollTimer = setInterval(loadJobs, 3000);
+  }
 }
 
 async function saveConfig() {
@@ -375,6 +411,7 @@ return (_ctx, _cache) => {
   const _component_VTextField = _resolveComponent("VTextField");
   const _component_VChip = _resolveComponent("VChip");
   const _component_VAlert = _resolveComponent("VAlert");
+  const _component_VProgressLinear = _resolveComponent("VProgressLinear");
   const _component_VCardTitle = _resolveComponent("VCardTitle");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VBottomSheet = _resolveComponent("VBottomSheet");
@@ -621,14 +658,14 @@ return (_ctx, _cache) => {
                 onKeyup: _withKeys(loadJobs, ["enter"])
               }, null, 8, ["modelValue"]),
               _createElementVNode("div", _hoisted_13, [
-                (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['', 'pending', 'running', 'failed', 'success'], (item) => {
+                (_openBlock(), _createElementBlock(_Fragment, null, _renderList(statusFilters, (item) => {
                   return _createVNode(_component_VChip, {
-                    key: item || 'all',
-                    color: jobStatus.value === item ? 'primary' : undefined,
-                    onClick: $event => {jobStatus.value = item; loadJobs();}
+                    key: item.value,
+                    color: jobStatus.value === item.value ? 'primary' : undefined,
+                    onClick: $event => {jobStatus.value = item.value; loadJobs();}
                   }, {
                     default: _withCtx(() => [
-                      _createTextVNode(_toDisplayString(item || '全部'), 1)
+                      _createTextVNode(_toDisplayString(item.label), 1)
                     ]),
                     _: 2
                   }, 1032, ["color", "onClick"])
@@ -639,7 +676,8 @@ return (_ctx, _cache) => {
                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(jobs.value, (job) => {
                     return (_openBlock(), _createBlock(_component_VListItem, {
                       key: job.job_id,
-                      class: "ss-card mb-2"
+                      class: "ss-card mb-2",
+                      onClick: $event => (toggleJobDetail(job))
                     }, {
                       append: _withCtx(() => [
                         (!_unref(isMobile) && job.status === 'pending')
@@ -647,7 +685,7 @@ return (_ctx, _cache) => {
                               key: 0,
                               size: "small",
                               class: "ss-touch",
-                              onClick: $event => (cutIn(job))
+                              onClick: _withModifiers($event => (cutIn(job)), ["stop"])
                             }, {
                               default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
                                 _createTextVNode("插队", -1)
@@ -661,7 +699,7 @@ return (_ctx, _cache) => {
                               size: "small",
                               variant: "text",
                               class: "ss-touch",
-                              onClick: $event => (openJob(job))
+                              onClick: _withModifiers($event => (openJob(job)), ["stop"])
                             }, {
                               default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
                                 _createTextVNode("工作台", -1)
@@ -672,7 +710,7 @@ return (_ctx, _cache) => {
                         _createVNode(_component_VBtn, {
                           icon: "mdi-dots-horizontal",
                           class: "ss-touch",
-                          onClick: $event => (moreJob(job))
+                          onClick: _withModifiers($event => (moreJob(job)), ["stop"])
                         }, null, 8, ["onClick"])
                       ]),
                       default: _withCtx(() => [
@@ -684,13 +722,34 @@ return (_ctx, _cache) => {
                         }, 1024),
                         _createVNode(_component_VListItemSubtitle, null, {
                           default: _withCtx(() => [
-                            _createTextVNode(_toDisplayString(job.priority) + " · " + _toDisplayString(job.status) + " · " + _toDisplayString(job.trigger), 1)
+                            _createTextVNode(_toDisplayString(job.priority) + " · " + _toDisplayString(statusLabel(job.status)) + " · " + _toDisplayString(triggerLabel(job.trigger)), 1)
                           ]),
                           _: 2
-                        }, 1024)
+                        }, 1024),
+                        (job.status === 'running' || job.progress > 0)
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_14, [
+                              _createVNode(_component_VProgressLinear, {
+                                "model-value": job.progress,
+                                height: "6",
+                                rounded: "",
+                                color: "primary"
+                              }, null, 8, ["model-value"]),
+                              _createElementVNode("div", _hoisted_15, _toDisplayString(job.stage_detail) + " · " + _toDisplayString(job.progress) + "%", 1)
+                            ]))
+                          : _createCommentVNode("", true),
+                        (expandedJob.value === job.job_id)
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+                              _createElementVNode("div", null, "阶段：" + _toDisplayString(job.stage_detail || '—'), 1),
+                              _createElementVNode("div", null, "进度：" + _toDisplayString(job.progress) + "%", 1),
+                              _createElementVNode("div", null, "路径：" + _toDisplayString(job.path), 1),
+                              (job.error)
+                                ? (_openBlock(), _createElementBlock("div", _hoisted_17, "错误：" + _toDisplayString(job.error), 1))
+                                : _createCommentVNode("", true)
+                            ]))
+                          : _createCommentVNode("", true)
                       ]),
                       _: 2
-                    }, 1024))
+                    }, 1032, ["onClick"]))
                   }), 128))
                 ]),
                 _: 1
@@ -699,9 +758,9 @@ return (_ctx, _cache) => {
           : (nav.value === 'desk')
             ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
                 (!activeJob.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_14, "从队列打开一个任务。"))
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_18, "从队列打开一个任务。"))
                   : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-                      _createElementVNode("div", _hoisted_15, _toDisplayString(activeJob.value.title), 1),
+                      _createElementVNode("div", _hoisted_19, _toDisplayString(activeJob.value.title), 1),
                       _createVNode(_sfc_main$1, {
                         graph: graph.value,
                         "current-ms": currentMs.value,
@@ -713,7 +772,7 @@ return (_ctx, _cache) => {
                         enabled: config.value.preview_enabled !== false,
                         onTime: _cache[9] || (_cache[9] = $event => (currentMs.value = $event))
                       }, null, 8, ["graph", "current-ms", "langs", "tracks", "stack", "style-config", "video-url", "enabled"]),
-                      _createElementVNode("div", _hoisted_16, [
+                      _createElementVNode("div", _hoisted_20, [
                         (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['dialogue', 'notes', 'stacked', 'sdh'], (track) => {
                           return _createVNode(_component_VChip, {
                             key: track,
@@ -721,7 +780,7 @@ return (_ctx, _cache) => {
                             onClick: $event => (previewTracks.value.includes(track) ? previewTracks.value = previewTracks.value.filter(item => item !== track) : previewTracks.value = [...previewTracks.value, track])
                           }, {
                             default: _withCtx(() => [
-                              _createTextVNode(_toDisplayString(track), 1)
+                              _createTextVNode(_toDisplayString(trackLabel(track)), 1)
                             ]),
                             _: 2
                           }, 1032, ["color", "onClick"])
@@ -739,7 +798,7 @@ return (_ctx, _cache) => {
                             class: "ss-cue",
                             style: _normalizeStyle({ left: cueLeft(cue), width: cueWidth(cue) }),
                             onClick: _withModifiers($event => {openCue(cue); currentMs.value = cue.start_ms;}, ["stop"])
-                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_17))
+                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_21))
                         }), 128))
                       ]),
                       _createVNode(_component_VList, null, {
@@ -782,7 +841,7 @@ return (_ctx, _cache) => {
                   onListModels: _cache[13] || (_cache[13] = $event => (pluginApi.value.listModels($event)))
                 }, null, 8, ["modelValue", "fields", "mobile"]),
                 (dirty.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_22, [
                       _createVNode(_component_VBtn, {
                         color: "primary",
                         class: "ss-touch",
@@ -885,7 +944,7 @@ return (_ctx, _cache) => {
               ]))]),
               _: 1
             }),
-            _createElementVNode("div", _hoisted_19, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
+            _createElementVNode("div", _hoisted_23, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
             _createVNode(_component_VSelect, {
               modelValue: enqueueForm.strategy,
               "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((enqueueForm.strategy) = $event)),

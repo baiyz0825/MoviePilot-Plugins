@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from ..core.cuegraph import parse_subtitle
+from ..core.embedded import extract_best_embedded
+from ..core.web_research import web_research
 from ..core.format_repair import repair_asr_graph
 from ..core.logging import studio_done, studio_log, studio_step
 from ..core.models import CueGraph, Job
@@ -43,13 +45,37 @@ class GenerationPipeline:
         self.llm = llm
         self.logger = logger
         self.notify = notify
+        self._current_job: Optional[Job] = None
+
+    STAGE_MAP = {
+        0: ("init", 5, "准备中"),
+        1: ("local_sidecar", 12, "查找本地外挂"),
+        2: ("search", 25, "在线搜索"),
+        3: ("embedded", 40, "提取内嵌字幕"),
+        4: ("asr", 55, "语音识别"),
+        5: ("translate", 72, "翻译对白"),
+        6: ("effects", 86, "生成特效"),
+        7: ("export", 95, "写出导出包"),
+    }
+
+    def _progress(self, step: int, message: str, *args) -> None:
+        studio_log(self.logger, "info", f"[Step {step}] {message}", *args)
+        stage, percent, detail = self.STAGE_MAP.get(step, ("", 0, ""))
+        if stage and self._current_job:
+            self._current_job.progress = percent
+            self._current_job.stage = stage
+            self._current_job.stage_detail = detail
+            try:
+                self.store.save_job(self._current_job)
+            except Exception:
+                pass
 
     def run(self, job: Job) -> Job:
         started = time.monotonic()
         config = self.config_getter() or {}
         latest = self.store.get_job(job.job_id) or job
-        studio_step(
-            self.logger,
+        self._current_job = latest
+        self._progress(
             0,
             "开始处理 title=%s job=%s trigger=%s priority=%s strategy=%s strm=%s path=%s",
             latest.title,
@@ -83,7 +109,7 @@ class GenerationPipeline:
         translator = TranslationService(config, http=self.http, llm=self.llm, logger=self.logger)
         if strategy != "search_only" and config.get("translate_enabled", True):
             langs = config.get("target_languages") or ["zh-Hans"]
-            studio_step(self.logger, 4, "翻译开始 langs=%s backend=%s cues=%s", langs, config.get("translate_backend") or "free_first", len(graph.cues))
+            self._progress(5, "翻译开始 langs=%s backend=%s cues=%s", langs, config.get("translate_backend") or "free_first", len(graph.cues))
             graph = translator.translate_graph(graph, langs)
             rate = translator.failure_rate(graph, langs[0])
             studio_log(self.logger, "info", "翻译结束 失败率=%.1f%%", rate * 100)
@@ -94,17 +120,18 @@ class GenerationPipeline:
                 studio_log(self.logger, "error", "失败率过高，整片不写 job=%s rate=%.1f%%", latest.job_id, rate * 100)
                 return self._finish(latest, config, started)
         else:
-            studio_step(self.logger, 4, "跳过翻译 strategy=%s enabled=%s", strategy, config.get("translate_enabled", True))
+            self._progress(5, "跳过翻译 strategy=%s enabled=%s", strategy, config.get("translate_enabled", True))
         if config.get("effects_enabled"):
-            studio_step(self.logger, 5, "生成特效顶注 title=%s", latest.title)
+            self._progress(6, "生成特效顶注 title=%s", latest.title)
             research = (lambda prompt, system="", role="research": self.llm(prompt, system=system, role=role)) if self.llm else None
-            graph = EffectsBuilder(config, research=research, logger=self.logger).apply(graph, title=latest.title)
+            web_search = (lambda term, title: web_research(term, title, self.http, logger=self.logger)) if self.http else None
+            graph = EffectsBuilder(config, research=research, web_search=web_search, logger=self.logger).apply(graph, title=latest.title)
             studio_log(self.logger, "info", "特效完成 notes=%s briefing=%s", len(graph.notes), len(graph.briefing))
         else:
-            studio_step(self.logger, 5, "特效关闭，跳过顶注")
+            self._progress(6, "特效关闭，跳过顶注")
         self.store.save_graph(graph)
         if latest.path:
-            studio_step(self.logger, 6, "写出导出包 path=%s", latest.path)
+            self._progress(7, "写出导出包 path=%s", latest.path)
             written = write_export_pack(
                 config,
                 latest.path,
@@ -127,6 +154,10 @@ class GenerationPipeline:
         return self._finish(latest, config, started)
 
     def _finish(self, latest: Job, config: Dict[str, Any], started: float) -> Job:
+        if latest.status == "success":
+            latest.progress = 100
+            latest.stage_detail = "已完成"
+        self._current_job = None
         saved = self.store.save_job(latest)
         self._emit_notify(saved, config)
         studio_log(
@@ -152,12 +183,12 @@ class GenerationPipeline:
     def _resolve_source(self, job: Job, config: Dict[str, Any], strategy: str):
         asr_ran = False
         asr_graph = None
-        studio_step(self.logger, 1, "查找本地外挂 path=%s", job.path)
+        self._progress(1, "查找本地外挂 path=%s", job.path)
         graph = self._load_local_sidecar(job)
         if graph:
             studio_log(self.logger, "info", "使用本地外挂 cues=%s", len(graph.cues))
         elif strategy != "translate_only" and self.searcher:
-            studio_step(self.logger, 2, "在线搜索 title=%s", job.title)
+            self._progress(2, "在线搜索 title=%s", job.title)
             found = self.searcher(job, config)
             if found and found.get("content"):
                 graph = parse_subtitle(found["content"], found.get("filename") or "", lang=found.get("lang") or "source", job_id=job.job_id)
@@ -165,9 +196,14 @@ class GenerationPipeline:
             else:
                 studio_log(self.logger, "info", "在线搜索没有可用正文")
         else:
-            studio_step(self.logger, 2, "跳过在线搜索 strategy=%s", strategy)
+            self._progress(2, "跳过在线搜索 strategy=%s", strategy)
+        if graph is None and strategy != "search_only" and not (job.is_strm or is_strm_path(job.path)):
+            self._progress(3, "提取内嵌字幕 path=%s", job.path)
+            graph = extract_best_embedded(job, config, self.logger)
+            if graph:
+                studio_log(self.logger, "info", "使用内嵌字幕 cues=%s", len(graph.cues))
         if graph is None and strategy != "search_only" and config.get("enable_asr") and not (job.is_strm or is_strm_path(job.path)):
-            studio_step(self.logger, 3, "开始 ASR model=%s", config.get("whisper_model") or "base")
+            self._progress(4, "开始 ASR model=%s", config.get("whisper_model") or "base")
             if self.asr:
                 graph = self.asr(job, config)
                 if graph:
@@ -179,7 +215,7 @@ class GenerationPipeline:
                     studio_log(self.logger, "warning", "ASR 没有产出字幕")
         elif graph is None:
             reason = "STRM 不做识别" if (job.is_strm or is_strm_path(job.path)) else ("策略只搜索" if strategy == "search_only" else "ASR 未开启")
-            studio_step(self.logger, 3, "跳过 ASR：%s", reason)
+            self._progress(4, "跳过 ASR：%s", reason)
         if graph:
             graph.job_id = job.job_id
         return graph, asr_ran, asr_graph

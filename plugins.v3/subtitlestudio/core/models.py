@@ -200,6 +200,9 @@ class Job:
     started_at: str = ""
     finished_at: str = ""
     queue_rank: int = 0
+    progress: int = 0
+    stage: str = ""
+    stage_detail: str = ""
     plugin_id: str = "SubtitleStudio"
     payload: Dict[str, Any] = field(default_factory=dict)
 
@@ -237,6 +240,9 @@ class Job:
             started_at=str(data.get("started_at") or ""),
             finished_at=str(data.get("finished_at") or ""),
             queue_rank=int(data.get("queue_rank") or 0),
+            progress=int(data.get("progress") or 0),
+            stage=str(data.get("stage") or ""),
+            stage_detail=str(data.get("stage_detail") or ""),
             plugin_id=str(data.get("plugin_id") or "SubtitleStudio"),
             payload=dict(data.get("payload") or {}),
         )

@@ -48,6 +48,22 @@ const enqueueSheet = ref(false)
 const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: true, items: [] })
 const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]))
 
+const STATUS_LABELS = { pending: '等待', running: '运行中', success: '成功', failed: '失败', skipped: '跳过', cancelled: '已取消' }
+const TRIGGER_LABELS = { event: '事件', watch: '监控', strm: 'STRM', manual: '手动', workflow: '工作流', command: '命令' }
+const TRACK_LABELS = { dialogue: '对白', notes: '顶注', stacked: '叠行', sdh: 'SDH' }
+const statusFilters = [
+  { value: '', label: '全部' },
+  { value: 'pending', label: '等待' },
+  { value: 'running', label: '运行中' },
+  { value: 'failed', label: '失败' },
+  { value: 'success', label: '成功' },
+]
+const expandedJob = ref(null)
+function statusLabel(s) { return STATUS_LABELS[s] || s }
+function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
+function trackLabel(t) { return TRACK_LABELS[t] || t }
+function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id }
+
 const tabs = [
   { value: 'media', title: '媒体', icon: 'mdi-filmstrip' },
   { value: 'jobs', title: '队列', icon: 'mdi-playlist-play' },
@@ -115,9 +131,14 @@ function fileLabel(item) {
   return item.filename || item.path
 }
 
+let pollTimer = null
 async function loadJobs() {
   const data = await pluginApi.value.jobs(jobsQuery.value, jobStatus.value)
   jobs.value = data?.items || []
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  if (jobs.value.some(j => j.status === 'running')) {
+    pollTimer = setInterval(loadJobs, 3000)
+  }
 }
 
 async function saveConfig() {
@@ -298,18 +319,28 @@ defineExpose({ reload, loadStatus: reload })
       <template v-else-if="nav === 'jobs'">
         <VTextField v-model="jobsQuery" label="搜索标题" prepend-inner-icon="mdi-magnify" class="mb-3" @keyup.enter="loadJobs" />
         <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
-          <VChip v-for="item in ['', 'pending', 'running', 'failed', 'success']" :key="item || 'all'" :color="jobStatus === item ? 'primary' : undefined" @click="jobStatus = item; loadJobs()">
-            {{ item || '全部' }}
+          <VChip v-for="item in statusFilters" :key="item.value" :color="jobStatus === item.value ? 'primary' : undefined" @click="jobStatus = item.value; loadJobs()">
+            {{ item.label }}
           </VChip>
         </div>
         <VList>
-          <VListItem v-for="job in jobs" :key="job.job_id" class="ss-card mb-2">
+          <VListItem v-for="job in jobs" :key="job.job_id" class="ss-card mb-2" @click="toggleJobDetail(job)">
             <VListItemTitle>{{ job.title }}</VListItemTitle>
-            <VListItemSubtitle>{{ job.priority }} · {{ job.status }} · {{ job.trigger }}</VListItemSubtitle>
+            <VListItemSubtitle>{{ job.priority }} · {{ statusLabel(job.status) }} · {{ triggerLabel(job.trigger) }}</VListItemSubtitle>
+            <div v-if="job.status === 'running' || job.progress > 0" class="mt-1 w-100">
+              <VProgressLinear :model-value="job.progress" height="6" rounded color="primary" />
+              <div class="text-caption text-medium-emphasis">{{ job.stage_detail }} · {{ job.progress }}%</div>
+            </div>
+            <div v-if="expandedJob === job.job_id" class="mt-2 pa-2 rounded bg-grey-lighten-4 text-caption">
+              <div>阶段：{{ job.stage_detail || '—' }}</div>
+              <div>进度：{{ job.progress }}%</div>
+              <div>路径：{{ job.path }}</div>
+              <div v-if="job.error" class="text-error">错误：{{ job.error }}</div>
+            </div>
             <template #append>
-              <VBtn v-if="!isMobile && job.status === 'pending'" size="small" class="ss-touch" @click="cutIn(job)">插队</VBtn>
-              <VBtn v-if="!isMobile" size="small" variant="text" class="ss-touch" @click="openJob(job)">工作台</VBtn>
-              <VBtn icon="mdi-dots-horizontal" class="ss-touch" @click="moreJob(job)" />
+              <VBtn v-if="!isMobile && job.status === 'pending'" size="small" class="ss-touch" @click.stop="cutIn(job)">插队</VBtn>
+              <VBtn v-if="!isMobile" size="small" variant="text" class="ss-touch" @click.stop="openJob(job)">工作台</VBtn>
+              <VBtn icon="mdi-dots-horizontal" class="ss-touch" @click.stop="moreJob(job)" />
             </template>
           </VListItem>
         </VList>
@@ -332,7 +363,7 @@ defineExpose({ reload, loadStatus: reload })
           />
           <div class="d-flex ga-2 my-3">
             <VChip v-for="track in ['dialogue', 'notes', 'stacked', 'sdh']" :key="track" :color="previewTracks.includes(track) ? 'primary' : undefined" @click="previewTracks.includes(track) ? previewTracks = previewTracks.filter(item => item !== track) : previewTracks = [...previewTracks, track]">
-              {{ track }}
+              {{ trackLabel(track) }}
             </VChip>
           </div>
           <div class="text-caption mb-1">按时间</div>

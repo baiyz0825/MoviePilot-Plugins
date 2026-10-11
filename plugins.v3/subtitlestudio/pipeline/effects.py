@@ -33,9 +33,10 @@ def clip_brief(text: str) -> str:
 
 
 class EffectsBuilder:
-    def __init__(self, config: Dict[str, Any], *, research: Optional[Callable[..., str]] = None, logger: Any = None):
+    def __init__(self, config: Dict[str, Any], *, research: Optional[Callable[..., str]] = None, web_search: Optional[Callable[..., tuple]] = None, logger: Any = None):
         self.config = config
         self.research = research
+        self.web_search = web_search
         self.logger = logger
 
     def apply(self, graph: CueGraph, *, title: str = "") -> CueGraph:
@@ -84,6 +85,15 @@ class EffectsBuilder:
         return graph
 
     def _research_term(self, term: str, title: str) -> tuple:
+        # 1. 网络检索优先（维基百科 → DuckDuckGo）
+        if self.web_search:
+            try:
+                text, confirmed = self.web_search(term, title)
+                if text:
+                    return text, confirmed
+            except Exception as exc:  # noqa: BLE001
+                studio_log(self.logger, "debug", "网络检索失败 %s：%s", term, exc)
+        # 2. LLM 兜底
         if not self.research:
             # 没有检索线路时不编圆，只给未证实占位。
             return "", False

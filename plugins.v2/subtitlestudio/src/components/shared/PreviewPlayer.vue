@@ -30,9 +30,11 @@ function textOf(cue, lang) {
 function lineStyle(index, kind = 'dialogue') {
   const css = overlayCss(props.styleConfig, index, kind)
   if (kind === 'note') return css
-  if (props.stack === 'main_top' && index === 0) {
-    return { ...css, top: '72px', bottom: 'auto' }
+  if (props.stack === 'main_top') {
+    // 主上小下：所有语言顶部定位，主在最上，副/再次递增往下
+    return { ...css, top: `${18 + index * 30}px`, bottom: 'auto' }
   }
+  // main_bottom：CSS 默认 bottom 递增，主在底，副在上方
   return css
 }
 
