@@ -17,6 +17,7 @@
 | --- | --- |
 | [功能使用教学](../../docs/SubtitleStudio功能使用教学.md) | 安装、配置、导出命名、常见问题 |
 | [V1 设计说明](../../docs/subtitle-studio-v1.html) | 功能对比、FIELDS、页面稿、开发约定 |
+| [生成效果示意](../../docs/subtitlestudio-effect-demo.html) | 叠行对白、人物顶注、导出文件名示意（浏览器直接打开） |
 | [宿主边界](../../docs/call-graphs/subtitle-studio-host.html) | V3 适配：`app.sdk` / `httpx2` / `add_plugin_once_job` |
 | [入库链路](../../docs/call-graphs/subtitle-studio-ingest.html) | 事件、目录监控、STRM、手动勾选 |
 | [任务处理](../../docs/call-graphs/subtitle-studio-job.html) | 单任务从入队到导出 |
