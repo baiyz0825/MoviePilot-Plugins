@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>字幕工坊 · 生成效果示意</title>
+  <style>
+    :root {
+      --bg: #12141a;
+      --panel: #1b1f2a;
+      --line: #2c3344;
+      --text: #e8ecf4;
+      --muted: #9aa3b5;
+      --accent: #6ea8fe;
+      --note: #B4E0FF;
+      --primary: #FFFFFF;
+      --outline: #000000;
+      --font: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+      --size-main: 22px;
+      --size-sub: 17px;
+      --size-3: 14px;
+      --size-note: 16px;
+      --margin-v: 20px;
+      --line-gap: 28px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: radial-gradient(1200px 600px at 20% -10%, #24304a 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 28px 20px 48px;
+    }
+    h1 { font-size: 22px; font-weight: 650; margin: 0 0 6px; letter-spacing: .02em; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; line-height: 1.55; max-width: 920px; }
+    .layout { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; max-width: 1100px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .card h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: none; }
+    .screen {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border-radius: 10px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.15), rgba(0,0,0,.55)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='960' height='540'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%231a2740'/%3E%3Cstop offset='1' stop-color='%230d121c'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='960' height='540' fill='url(%23g)'/%3E%3Ccircle cx='480' cy='220' r='90' fill='%233a4d6d' opacity='.35'/%3E%3Crect x='0' y='360' width='960' height='180' fill='%23070a10' opacity='.55'/%3E%3C/svg%3E") center/cover;
+      border: 1px solid #000;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+    .burn {
+      position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.35) 100%);
+    }
+    .meta-chip {
+      position: absolute; top: 12px; left: 12px;
+      font-size: 11px; color: #d7deea; background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.12); padding: 4px 8px; border-radius: 999px;
+    }
+    .line {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      max-width: 86%; text-align: center; white-space: pre-line;
+      line-height: 1.25; pointer-events: none;
+      text-shadow:
+        0 0 2px var(--outline),
+        0 2px 2px rgba(0,0,0,.65),
+        -1px 0 2px var(--outline),
+        1px 0 2px var(--outline),
+        0 -1px 2px var(--outline),
+        0 1px 2px var(--outline);
+    }
+    .note {
+      top: max(12px, calc(var(--margin-v) - 4px));
+      font-size: var(--size-note);
+      color: var(--note);
+      font-weight: 500;
+    }
+    .dialogue.main { font-size: var(--size-main); color: var(--primary); }
+    .dialogue.sub { font-size: var(--size-sub); color: var(--primary); opacity: .95; }
+    .dialogue.third { font-size: var(--size-3); color: var(--primary); opacity: .9; }
+    .stack-main-bottom .dialogue.main { bottom: var(--margin-v); }
+    .stack-main-bottom .dialogue.sub { bottom: calc(var(--margin-v) + var(--line-gap)); }
+    .stack-main-bottom .dialogue.third { bottom: calc(var(--margin-v) + var(--line-gap) * 2); }
+    .stack-main-top .dialogue.main { top: 18px; }
+    .stack-main-top .dialogue.sub { top: 48px; }
+    .stack-main-top .dialogue.third { top: 74px; }
+    .stack-main-top .note { top: auto; bottom: var(--margin-v); }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button, select {
+      appearance: none; border: 1px solid var(--line); background: #232836; color: var(--text);
+      border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer;
+    }
+    button.active, button:hover { border-color: var(--accent); color: #fff; }
+    .timeline {
+      margin-top: 12px; height: 8px; background: #10131a; border-radius: 999px; position: relative; cursor: pointer;
+    }
+    .timeline .fill {
+      position: absolute; inset: 0 auto 0 0; width: 0%; background: linear-gradient(90deg, #4d7cff, #79b0ff);
+      border-radius: inherit;
+    }
+    .time { margin-top: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .file-list { display: grid; gap: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .file {
+      background: #141824; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+      display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    }
+    .file b { color: #c9d4ea; font-weight: 600; }
+    .tag { color: var(--accent); font-size: 11px; white-space: nowrap; }
+    .legend { display: grid; gap: 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .legend strong { color: var(--text); font-weight: 600; }
+    .cue-card {
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #151923;
+    }
+    .cue-card .t { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line);
+      font-size: 11px; margin-right: 6px; color: var(--muted);
+    }
+    .pill.on { border-color: #5b8def; color: #cfe0ff; background: rgba(91,141,239,.12); }
+  </style>
+</head>
+<body>
+  <h1>字幕工坊 · 生成效果示意</h1>
+  <p class="sub">
+    按当前产品合同模拟：默认白字黑边；目标语序决定字号层级；特效是顶部短注（不是卡拉 OK / 飞字）；
+    导出包与搜索偏好分开。下面画面近似工作台预览 / ASS 落盘观感。
+  </p>
+
+  <div class="layout">
+    <section class="card">
+      <h2>画面预览（电影场景）</h2>
+      <div id="screen" class="screen stack-main-bottom">
+        <div class="burn"></div>
+        <div class="meta-chip" id="chip">Iron Man · 特效顶注开 · 主下小上</div>
+        <div class="line note" id="note" hidden></div>
+        <div class="line dialogue third" id="lang3" hidden></div>
+        <div class="line dialogue sub" id="lang2" hidden></div>
+        <div class="line dialogue main" id="lang1"></div>
+      </div>
+      <div class="timeline" id="timeline" title="拖动时间轴"><div class="fill" id="fill"></div></div>
+      <div class="time" id="clock">00:00.000 / 00:12.000</div>
+      <div class="controls">
+        <button type="button" id="play">播放 / 暂停</button>
+        <button type="button" data-stack="main_bottom" class="active">主下小上</button>
+        <button type="button" data-stack="main_top">主上小下</button>
+        <select id="langs">
+          <option value="1">单语 · 简中</option>
+          <option value="2" selected>双语 · 简中 + 英</option>
+          <option value="3">三语 · 简中 + 英 + 日</option>
+        </select>
+        <select id="look">
+          <option value="white">白字黑边</option>
+          <option value="yellow">黄字黑边</option>
+          <option value="soft">白字软影</option>
+        </select>
+        <button type="button" id="toggleNote" class="active">顶注 ON</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>这一帧在干什么</h2>
+      <div class="legend">
+        <div class="cue-card">
+          <div class="t">当前 CueGraph</div>
+          <div id="cueText">—</div>
+        </div>
+        <div>
+          <span class="pill on">对白轨</span>
+          <span class="pill on" id="pillNote">notes 顶注</span>
+          <span class="pill" id="pillStack">叠行版式</span>
+        </div>
+        <div>
+          <strong>人物顶注</strong>：专名首次出现时，顶部 8–16 字短注（ASS <code>\\an8</code>）。
+          检索失败标「未证实」，不编空话；过密进 Briefing。
+        </div>
+        <div>
+          <strong>不是</strong>卡拉 OK、不是飞字、不是弹幕。SDH / ASR 原轨是另文件，不进对白乘法。
+        </div>
+      </div>
+
+      <h2 style="margin-top:18px">同目录会写出（library_zh 预设示意）</h2>
+      <div class="file-list" id="files"></div>
+    </section>
+  </div>
+
+  <script>
+    const CUES = [
+      {
+        start: 0, end: 2800,
+        zh: "钢铁侠来了。",
+        en: "Iron Man is here.",
+        ja: "アイアンマンが来た。",
+        note: "托尼·斯塔克／钢铁侠",
+      },
+      {
+        start: 3000, end: 6200,
+        zh: "把能量盾稳住。",
+        en: "Hold the energy shield.",
+        ja: "エネルギーシールドを保て。",
+        note: "",
+      },
+      {
+        start: 6500, end: 9800,
+        zh: "贾维斯，扫描敌方火力。",
+        en: "Jarvis, scan enemy fire.",
+        ja: "ジャービス、敵火力をスキャン。",
+        note: "贾维斯／AI 管家",
+      },
+      {
+        start: 10000, end: 12000,
+        zh: "我们只有一次机会。",
+        en: "We only get one shot.",
+        ja: "チャンスは一度きりだ。",
+        note: "",
+      },
+    ];
+    const DURATION = 12000;
+    let t = 0;
+    let playing = false;
+    let stack = "main_bottom";
+    let langCount = 2;
+    let noteOn = true;
+    let last = performance.now();
+
+    const screen = document.getElementById("screen");
+    const noteEl = document.getElementById("note");
+    const lang1 = document.getElementById("lang1");
+    const lang2 = document.getElementById("lang2");
+    const lang3 = document.getElementById("lang3");
+    const fill = document.getElementById("fill");
+    const clock = document.getElementById("clock");
+    const cueText = document.getElementById("cueText");
+    const chip = document.getElementById("chip");
+    const files = document.getElementById("files");
+    const pillNote = document.getElementById("pillNote");
+    const pillStack = document.getElementById("pillStack");
+
+    function fmt(ms) {
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      const f = Math.floor(ms % 1000);
+      return `${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}.${String(f).padStart(3,"0")}`;
+    }
+
+    function activeCue() {
+      return CUES.find(c => t >= c.start && t < c.end) || null;
+    }
+
+    function renderFiles() {
+      const rows = [];
+      if (langCount >= 1) rows.push(["Iron.Man.default.chi.zh-cn.srt", "单语主轨"]);
+      if (langCount >= 2) rows.push(["Iron.Man.chi.zh-cn&eng.srt", "叠行双语"]);
+      if (langCount >= 3) rows.push(["Iron.Man.chi.zh-cn&eng&jpn.ass", "叠行三语 ASS"]);
+      if (noteOn) rows.push(["Iron.Man.notes.ass", "特效顶注轨"]);
+      files.innerHTML = rows.map(([name, tag]) =>
+        `<div class="file"><b>${name}</b><span class="tag">${tag}</span></div>`
+      ).join("");
+    }
+
+    function paint() {
+      const cue = activeCue();
+      screen.classList.toggle("stack-main-bottom", stack === "main_bottom");
+      screen.classList.toggle("stack-main-top", stack === "main_top");
+      fill.style.width = `${(t / DURATION) * 100}%`;
+      clock.textContent = `${fmt(t)} / ${fmt(DURATION)}`;
+      chip.textContent = `Iron Man · 特效顶注${noteOn ? "开" : "关"} · ${stack === "main_bottom" ? "主下小上" : "主上小下"}`;
+      pillNote.classList.toggle("on", noteOn);
+      pillStack.classList.toggle("on", langCount > 1);
+
+      if (!cue) {
+        noteEl.hidden = true;
+        lang1.textContent = "";
+        lang2.hidden = true;
+        lang3.hidden = true;
+        cueText.textContent = "（无字幕）";
+        return;
+      }
+
+      lang1.textContent = cue.zh;
+      if (langCount >= 2) {
+        lang2.hidden = false;
+        lang2.textContent = cue.en;
+      } else {
+        lang2.hidden = true;
+      }
+      if (langCount >= 3) {
+        lang3.hidden = false;
+        lang3.textContent = cue.ja;
+      } else {
+        lang3.hidden = true;
+      }
+
+      if (noteOn && cue.note) {
+        noteEl.hidden = false;
+        noteEl.textContent = cue.note;
+      } else {
+        noteEl.hidden = true;
+      }
+
+      cueText.innerHTML =
+        `<div><strong>对白</strong> ${cue.zh}</div>` +
+        (langCount >= 2 ? `<div style="opacity:.85">${cue.en}</div>` : "") +
+        (langCount >= 3 ? `<div style="opacity:.7">${cue.ja}</div>` : "") +
+        (cue.note && noteOn ? `<div style="color:var(--note);margin-top:6px">顶注：${cue.note}</div>` : "<div style=\"margin-top:6px;opacity:.6\">本句无顶注</div>");
+    }
+
+    function tick(now) {
+      if (playing) {
+        t += now - last;
+        if (t >= DURATION) t = 0;
+      }
+      last = now;
+      paint();
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    renderFiles();
+
+    document.getElementById("play").onclick = () => { playing = !playing; };
+    document.querySelectorAll("[data-stack]").forEach(btn => {
+      btn.onclick = () => {
+        stack = btn.dataset.stack;
+        document.querySelectorAll("[data-stack]").forEach(b => b.classList.toggle("active", b === btn));
+        paint();
+      };
+    });
+    document.getElementById("langs").onchange = (e) => {
+      langCount = Number(e.target.value);
+      renderFiles();
+      paint();
+    };
+    document.getElementById("toggleNote").onclick = (e) => {
+      noteOn = !noteOn;
+      e.target.classList.toggle("active", noteOn);
+      e.target.textContent = noteOn ? "顶注 ON" : "顶注 OFF";
+      renderFiles();
+      paint();
+    };
+    document.getElementById("look").onchange = (e) => {
+      const root = document.documentElement.style;
+      if (e.target.value === "yellow") {
+        root.setProperty("--primary", "#FFE566");
+        root.setProperty("--outline", "#000000");
+      } else if (e.target.value === "soft") {
+        root.setProperty("--primary", "#FFFFFF");
+        root.setProperty("--outline", "#000000");
+      } else {
+        root.setProperty("--primary", "#FFFFFF");
+        root.setProperty("--outline", "#000000");
+      }
+    };
+    document.getElementById("timeline").onclick = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      t = ((e.clientX - rect.left) / rect.width) * DURATION;
+      paint();
+    };
+  </script>
+</body>
+</html>
