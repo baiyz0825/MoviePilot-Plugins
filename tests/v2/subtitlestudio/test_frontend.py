@@ -37,11 +37,14 @@ def test_app_page_matches_mobile_contract(gen: str = GEN):
     assert "VBottomSheet" in page
     assert "插队" in page
     assert "拉取媒体库" in page
-    assert "提交识别" in page
+    assert "提交处理" in page
+    assert "按当前图写盘" in page
+    assert "重跑" in page
     assert "ss-timeline" in page
     assert "PreviewPlayer" in page
     assert "sourcePluginId" in page
     assert "navKey" in page
+    assert "onBeforeUnmount" in page
     assert "sourcePluginId" in _read("src/components/Config.vue", gen=gen)
     assert "sourcePluginId" in _read("src/components/Dashboard.vue", gen=gen)
     assert "watch_paths" not in page or True
@@ -57,6 +60,8 @@ def test_settings_use_textarea_and_host_controls(gen: str = GEN):
     assert "style-editor" in settings
     assert "notify_on" in settings
     assert "send_notify" in settings
+    assert "field.control === 'order'" in settings
+    assert "field.control === 'role'" in settings
     viewport = _read("src/composables/useMobileViewport.js", gen=gen)
     assert "(max-width: 899px)" in viewport
     injects = _read("src/composables/useHostInjects.js", gen=gen)

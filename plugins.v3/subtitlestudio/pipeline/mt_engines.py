@@ -28,28 +28,68 @@ def _edge_lang(lang: str) -> str:
 
 
 class FreeMtRouter:
-    def __init__(self, http: HttpFn, config: Dict[str, Any], logger: Any = None):
+    def __init__(self, http: HttpFn, config: Dict[str, Any], logger: Any = None, cancel_check=None):
         self.http = http
         self.config = config
         self.logger = logger
+        self.cancel_check = cancel_check
+        self._max_consecutive_errors = max(2, int(config.get("mt_max_consecutive_errors") or 5))
 
     def translate_batch(self, texts: List[str], *, source: str, target: str) -> List[Optional[str]]:
         engines = list(self.config.get("mt_engines") or ["edge", "gtx"])
         last_error = ""
         for engine in engines:
+            if callable(self.cancel_check):
+                self.cancel_check()
             try:
                 if engine == "edge":
-                    return self._edge(texts, source, target)
+                    return self._map_texts(texts, lambda text: self._edge_one(text, source, target), engine)
                 if engine == "gtx":
-                    return self._gtx(texts, source, target)
+                    return self._map_texts(texts, lambda text: self._gtx_one(text, source, target), engine)
                 if engine == "deeplx":
-                    return self._deeplx(texts, source, target)
+                    return self._map_texts(texts, lambda text: self._deeplx_one(text, source, target), engine)
                 if engine == "libre":
-                    return self._libre(texts, source, target)
+                    return self._map_texts(texts, lambda text: self._libre_one(text, source, target), engine)
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
                 studio_log(self.logger, "warning", "免费引擎 %s 失败：%s", engine, exc)
         raise RuntimeError(last_error or "免费翻译引擎全部失败")
+
+    def _map_texts(self, texts: List[str], fn, engine: str) -> List[Optional[str]]:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        workers = max(1, min(8, int(self.config.get("parallel_workers") or 3)))
+        results: List[Optional[str]] = [None] * len(texts)
+        consecutive = 0
+        # 小批量串行更稳；大批量才开线程池
+        if len(texts) <= 4 or workers <= 1:
+            for index, text in enumerate(texts):
+                if callable(self.cancel_check):
+                    self.cancel_check()
+                try:
+                    results[index] = fn(text)
+                    consecutive = 0 if results[index] else consecutive + 1
+                except Exception as exc:  # noqa: BLE001
+                    consecutive += 1
+                    studio_log(self.logger, "debug", "%s 单句失败：%s", engine, exc)
+                if consecutive >= self._max_consecutive_errors:
+                    raise RuntimeError(f"{engine} 连续失败过多")
+            return results
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(fn, text): index for index, text in enumerate(texts)}
+            for future in as_completed(futures):
+                if callable(self.cancel_check):
+                    self.cancel_check()
+                index = futures[future]
+                try:
+                    results[index] = future.result()
+                    consecutive = 0 if results[index] else consecutive + 1
+                except Exception as exc:  # noqa: BLE001
+                    consecutive += 1
+                    studio_log(self.logger, "debug", "%s 单句失败：%s", engine, exc)
+                if consecutive >= self._max_consecutive_errors * 2:
+                    raise RuntimeError(f"{engine} 连续失败过多")
+        return results
 
     def _get(self, url: str, **kwargs: Any) -> Any:
         return self.http("GET", url, **kwargs)
@@ -57,66 +97,45 @@ class FreeMtRouter:
     def _post(self, url: str, **kwargs: Any) -> Any:
         return self.http("POST", url, **kwargs)
 
-    def _edge(self, texts: List[str], source: str, target: str) -> List[Optional[str]]:
-        # Edge 公开接口不需要 Key，适合作为默认第一档。
-        url = "https://api.cognitive.microsofttranslator.com/translate"
-        headers = {
-            "Content-Type": "application/json",
-            "Ocp-Apim-Subscription-Key": "",
-        }
-        # 无 Key 时走网页翻译端点的简化实现：逐句调 gtx 风格的 Edge 兼容地址。
-        results = []
-        for text in texts:
-            query = (
-                "https://edge.microsoft.com/translate/translatetext"
-                f"?from={quote(_edge_lang(source))}&to={quote(_edge_lang(target))}"
-            )
-            payload = self._post(query, json_body=[{"Text": text}], headers={"Content-Type": "application/json"})
-            results.append(_pick_translated(payload, text))
-        return results
+    def _edge_one(self, text: str, source: str, target: str) -> Optional[str]:
+        query = (
+            "https://edge.microsoft.com/translate/translatetext"
+            f"?from={quote(_edge_lang(source))}&to={quote(_edge_lang(target))}"
+        )
+        payload = self._post(query, json_body=[{"Text": text}], headers={"Content-Type": "application/json"})
+        return _pick_translated(payload, text)
 
-    def _gtx(self, texts: List[str], source: str, target: str) -> List[Optional[str]]:
-        results = []
-        for text in texts:
-            url = (
-                "https://translate.googleapis.com/translate_a/single"
-                f"?client=gtx&sl={quote(source or 'auto')}&tl={quote(_edge_lang(target))}&dt=t&q={quote(text)}"
-            )
-            payload = self._get(url)
-            results.append(_pick_gtx(payload, text))
-        return results
+    def _gtx_one(self, text: str, source: str, target: str) -> Optional[str]:
+        url = (
+            "https://translate.googleapis.com/translate_a/single"
+            f"?client=gtx&sl={quote(source or 'auto')}&tl={quote(_edge_lang(target))}&dt=t&q={quote(text)}"
+        )
+        payload = self._get(url)
+        return _pick_gtx(payload, text)
 
-    def _deeplx(self, texts: List[str], source: str, target: str) -> List[Optional[str]]:
+    def _deeplx_one(self, text: str, source: str, target: str) -> Optional[str]:
         url = str(self.config.get("deeplx_url") or "").rstrip("/")
         if not url:
             raise RuntimeError("未配置 DeepLX 地址")
-        results = []
-        for text in texts:
-            payload = self._post(
-                f"{url}/translate",
-                json_body={"text": text, "source_lang": source, "target_lang": target},
-            )
-            if isinstance(payload, dict):
-                results.append(str(payload.get("data") or payload.get("text") or "") or None)
-            else:
-                results.append(None)
-        return results
+        payload = self._post(
+            f"{url}/translate",
+            json_body={"text": text, "source_lang": source, "target_lang": target},
+        )
+        if isinstance(payload, dict):
+            return str(payload.get("data") or payload.get("text") or "") or None
+        return None
 
-    def _libre(self, texts: List[str], source: str, target: str) -> List[Optional[str]]:
+    def _libre_one(self, text: str, source: str, target: str) -> Optional[str]:
         url = str(self.config.get("libre_url") or "").rstrip("/")
         if not url:
             raise RuntimeError("未配置 LibreTranslate 地址")
-        results = []
-        for text in texts:
-            payload = self._post(
-                f"{url}/translate",
-                json_body={"q": text, "source": source or "auto", "target": target, "format": "text"},
-            )
-            if isinstance(payload, dict):
-                results.append(str(payload.get("translatedText") or "") or None)
-            else:
-                results.append(None)
-        return results
+        payload = self._post(
+            f"{url}/translate",
+            json_body={"q": text, "source": source or "auto", "target": target, "format": "text"},
+        )
+        if isinstance(payload, dict):
+            return str(payload.get("translatedText") or "") or None
+        return None
 
 
 def _pick_translated(payload: Any, original: str) -> Optional[str]:

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { createStudioApi } from '../api/studioApi'
 
 const props = defineProps({
@@ -10,8 +10,10 @@ const props = defineProps({
   allowRefresh: { type: Boolean, default: true },
 })
 
+const emit = defineEmits(['action'])
 const counts = ref({})
-const pluginApi = createStudioApi(props.api, `plugin/${props.pluginId}`)
+const pluginApi = createStudioApi(props.api, `plugin/${props.pluginId || props.sourcePluginId}`)
+let timer = null
 
 async function load() {
   try {
@@ -22,15 +24,31 @@ async function load() {
   }
 }
 
-onMounted(load)
+function openQueue() {
+  emit('action', { page: 'AppPage', nav: 'jobs' })
+}
+
+onMounted(() => {
+  load()
+  if (props.allowRefresh) {
+    timer = setInterval(load, 15000)
+  }
+})
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 defineExpose({ load })
 </script>
 
 <template>
-  <VCard class="ss-card">
-    <VCardTitle>字幕工坊队列</VCardTitle>
+  <VCard class="ss-card" role="button" @click="openQueue">
+    <VCardTitle class="d-flex align-center justify-space-between">
+      <span>字幕工坊队列</span>
+      <VBtn v-if="allowRefresh" size="small" variant="text" class="ss-touch" @click.stop="load">刷新</VBtn>
+    </VCardTitle>
     <VCardText>
       运行中 {{ counts.running || 0 }} · 等待 {{ counts.pending || 0 }} · 失败 {{ counts.failed || 0 }}
+      <div class="text-caption text-medium-emphasis mt-1">点击打开工作台队列</div>
     </VCardText>
   </VCard>
 </template>

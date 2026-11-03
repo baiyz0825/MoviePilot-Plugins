@@ -67,8 +67,14 @@ class JobStore:
         self._ensure()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
         return conn
 
     def _ensure(self) -> None:
@@ -167,6 +173,44 @@ class JobStore:
     def running_job(self) -> Optional[Job]:
         rows = self.list_jobs(status="running", limit=1)
         return rows[0] if rows else None
+
+    def reclaim_orphan_running(self, *, reason: str = "进程中断，任务已回收") -> int:
+        """进程刚启动时，库里任何 running 都属于上一进程的孤儿，必须回收以免队列死锁。"""
+        rows = self.list_jobs(status="running", limit=500)
+        count = 0
+        for job in rows:
+            job.status = "failed"
+            job.error = reason
+            job.finished_at = utc_now()
+            job.payload = {**job.payload, "reclaimed": True}
+            self.save_job(job)
+            count += 1
+        return count
+
+    def find_active_by_path(self, path: str, *, within_seconds: int = 300) -> Optional[Job]:
+        """防抖：同路径仍有 pending/running，或刚结束不久的成功任务，避免重复入队。"""
+        if not path:
+            return None
+        now = datetime.now(timezone.utc)
+        for status in ("running", "pending"):
+            for job in self.list_jobs(status=status, limit=200):
+                if job.path == path:
+                    return job
+        for job in self.list_jobs(q=path, limit=40):
+            if job.path != path or job.status not in {"success", "skipped"}:
+                continue
+            stamp = job.finished_at or job.updated_at or job.created_at
+            if not stamp:
+                continue
+            try:
+                finished = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if finished.tzinfo is None:
+                finished = finished.replace(tzinfo=timezone.utc)
+            if (now - finished).total_seconds() <= within_seconds:
+                return job
+        return None
 
     def next_queue_rank(self) -> int:
         with self._lock, self._connect() as conn:

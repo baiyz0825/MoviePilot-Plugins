@@ -40,7 +40,9 @@ class StudioServices:
             self.store,
             plugin.current_config,
             searcher=self.searcher.best_download,
-            asr=lambda job, config: transcribe(job, config, plugin.host_logger),
+            asr=lambda job, config, cancel_check=None: transcribe(
+                job, config, plugin.host_logger, cancel_check=cancel_check
+            ),
             http=self.http,
             llm=self.llm.complete,
             logger=plugin.host_logger,

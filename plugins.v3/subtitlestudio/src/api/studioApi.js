@@ -39,5 +39,24 @@ export function createStudioApi(api, pluginBase) {
     listModels: body => post('/endpoints/models', body, { feedback: 'all' }),
     previewAssUrl: id => `${base()}/jobs/${id}/preview/ass`,
     previewVideoUrl: id => `${base()}/jobs/${id}/preview/video`,
+    async fetchPreviewVideo(id) {
+      const response = await api.get(`${base()}/jobs/${id}/preview/video`, {
+        responseType: 'blob',
+        feedback: 'silent',
+      })
+      if (!response) return null
+      if (response instanceof Blob) return response.size ? response : null
+      if (response?.data instanceof Blob) return response.data.size ? response.data : null
+      return null
+    },
+    async fetchPreviewAss(id) {
+      const response = await api.get(`${base()}/jobs/${id}/preview/ass`, {
+        responseType: 'text',
+        feedback: 'silent',
+      })
+      if (typeof response === 'string') return response
+      if (response?.data != null) return String(response.data)
+      return ''
+    },
   }
 }

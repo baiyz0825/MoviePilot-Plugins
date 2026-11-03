@@ -9,6 +9,10 @@ def test_gates_skip_existing_chinese(tmp_path):
     shared.test_gates_skip_existing_chinese(tmp_path, gen="v3")
 
 
+def test_reclaim_orphan_running_unblocks_queue(tmp_path):
+    shared.test_reclaim_orphan_running_unblocks_queue(tmp_path, gen="v3")
+
+
 def test_job_store_cut_in_does_not_touch_running(tmp_path):
     shared.test_job_store_cut_in_does_not_touch_running(tmp_path, gen="v3")
 

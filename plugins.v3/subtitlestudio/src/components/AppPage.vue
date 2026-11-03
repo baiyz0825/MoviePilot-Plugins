@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '../styles/theme.css'
 import { createStudioApi } from '../api/studioApi'
 import { useHostInjects } from '../composables/useHostInjects'
@@ -19,7 +19,7 @@ const props = defineProps({
 const emit = defineEmits(['action'])
 const isMobile = useMobileViewport()
 const { toast, confirm } = useHostInjects()
-const pluginBase = computed(() => `plugin/${props.pluginId || 'SubtitleStudio'}`)
+const pluginBase = computed(() => `plugin/${props.pluginId || props.sourcePluginId || 'SubtitleStudio'}`)
 const pluginApi = computed(() => createStudioApi(props.api, pluginBase))
 
 const nav = ref('media')
@@ -40,13 +40,16 @@ const activeJob = ref(null)
 const graph = ref({ cues: [], notes: [], briefing: [] })
 const currentMs = ref(0)
 const previewTracks = ref(['dialogue', 'notes'])
+const previewObjectUrl = ref('')
 const cueSheet = ref(false)
 const editingCue = ref(null)
 const config = ref({})
 const fields = ref([])
+const modelPicker = ref({ open: false, endpointId: '', items: [] })
 const enqueueSheet = ref(false)
-const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: true, items: [] })
+const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: false, items: [] })
 const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]))
+const enqueueHasStrm = computed(() => (enqueueForm.items || []).some(item => item?.is_strm || String(item?.path || '').toLowerCase().endsWith('.strm')))
 
 const STATUS_LABELS = { pending: '等待', running: '运行中', success: '成功', failed: '失败', skipped: '跳过', cancelled: '已取消' }
 const TRIGGER_LABELS = { event: '事件', watch: '监控', strm: 'STRM', manual: '手动', workflow: '工作流', command: '命令' }
@@ -57,12 +60,21 @@ const statusFilters = [
   { value: 'running', label: '运行中' },
   { value: 'failed', label: '失败' },
   { value: 'success', label: '成功' },
+  { value: 'skipped', label: '跳过' },
+  { value: 'cancelled', label: '已取消' },
 ]
 const expandedJob = ref(null)
 function statusLabel(s) { return STATUS_LABELS[s] || s }
 function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
 function trackLabel(t) { return TRACK_LABELS[t] || t }
 function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id }
+function formatMs(ms) {
+  const total = Math.max(0, Math.floor(Number(ms) || 0) / 1000)
+  const m = Math.floor(total / 60)
+  const s = Math.floor(total % 60)
+  const frac = Math.floor((Number(ms) || 0) % 1000)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(frac).padStart(3, '0')}`
+}
 
 const tabs = [
   { value: 'media', title: '媒体', icon: 'mdi-filmstrip' },
@@ -72,6 +84,31 @@ const tabs = [
 ]
 
 const duration = computed(() => Math.max(graph.value.duration_ms || 1, ...(graph.value.cues || []).map(item => item.end_ms || 0), 1))
+const strategyItems = computed(() => {
+  const all = [
+    { title: '先搜后译', value: 'search_then_translate' },
+    { title: '只搜索', value: 'search_only' },
+    { title: '只识别翻译', value: 'translate_only' },
+  ]
+  if (enqueueHasStrm.value) {
+    return all.filter(item => item.value !== 'translate_only')
+  }
+  return all
+})
+
+watch(enqueueHasStrm, (value) => {
+  if (value && enqueueForm.strategy === 'translate_only') {
+    enqueueForm.strategy = 'search_then_translate'
+  }
+})
+
+watch(nav, async (value, prev) => {
+  if (prev === 'settings' && value !== 'settings' && dirty.value) {
+    if (!(await confirm('设置尚未保存，确定离开？'))) {
+      nav.value = 'settings'
+    }
+  }
+})
 
 async function reload() {
   loading.value = true
@@ -90,9 +127,13 @@ async function reload() {
 }
 
 async function loadMedia() {
-  const data = await pluginApi.value.media(mediaQuery.value, mediaType.value)
-  mediaGroups.value = data?.groups || []
-  mediaCounts.value = data?.counts || { files: 0, groups: 0 }
+  try {
+    const data = await pluginApi.value.media(mediaQuery.value, mediaType.value)
+    mediaGroups.value = data?.groups || []
+    mediaCounts.value = data?.counts || { files: 0, groups: 0 }
+  } catch (error) {
+    toast.error?.(error?.message || '加载媒体失败')
+  }
 }
 
 async function refreshLibrary() {
@@ -133,18 +174,45 @@ function fileLabel(item) {
 
 let pollTimer = null
 async function loadJobs() {
-  const data = await pluginApi.value.jobs(jobsQuery.value, jobStatus.value)
-  jobs.value = data?.items || []
+  try {
+    const data = await pluginApi.value.jobs(jobsQuery.value, jobStatus.value)
+    jobs.value = data?.items || []
+  } catch (error) {
+    toast.error?.(error?.message || '加载队列失败')
+  }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-  if (jobs.value.some(j => j.status === 'running')) {
-    pollTimer = setInterval(loadJobs, 3000)
+  if (jobs.value.some(j => j.status === 'running' || j.status === 'pending')) {
+    pollTimer = setInterval(() => { loadJobs() }, 3000)
   }
 }
 
 async function saveConfig() {
-  await pluginApi.value.saveConfig(config.value)
-  dirty.value = false
-  toast.success?.('已保存')
+  try {
+    const saved = await pluginApi.value.saveConfig(config.value)
+    config.value = { ...(saved || config.value) }
+    dirty.value = false
+    toast.success?.('已保存')
+  } catch (error) {
+    toast.error?.(error?.message || '保存失败')
+  }
+}
+
+function revokePreview() {
+  if (previewObjectUrl.value) {
+    URL.revokeObjectURL(previewObjectUrl.value)
+    previewObjectUrl.value = ''
+  }
+}
+
+async function loadPreview(job) {
+  revokePreview()
+  if (!job?.job_id || job.is_strm) return
+  try {
+    const blob = await pluginApi.value.fetchPreviewVideo(job.job_id)
+    if (blob) previewObjectUrl.value = URL.createObjectURL(blob)
+  } catch {
+    previewObjectUrl.value = ''
+  }
 }
 
 async function enqueue(item) {
@@ -155,17 +223,17 @@ async function enqueue(item) {
   enqueueForm.media_id = item?.media_id
   enqueueForm.tmdbid = item?.tmdbid
   enqueueForm.doubanid = item?.doubanid
-  enqueueForm.force = true
+  enqueueForm.force = false
   enqueueSheet.value = true
 }
 
 async function submitSelected() {
   if (!selectedFiles.value.length) {
-    toast.error?.('先勾选要识别的文件')
+    toast.error?.('先勾选要处理的文件')
     return
   }
   enqueueForm.items = selectedFiles.value
-  enqueueForm.force = true
+  enqueueForm.force = false
   enqueueSheet.value = true
 }
 
@@ -173,12 +241,20 @@ async function confirmEnqueue() {
   submitting.value = true
   try {
     const items = enqueueForm.items?.length ? enqueueForm.items : [enqueueForm]
-    await pluginApi.value.createJobs({
+    const data = await pluginApi.value.createJobs({
       items,
       strategy: enqueueForm.strategy,
       priority: enqueueForm.priority,
       force: enqueueForm.force,
     })
+    const created = data?.count || data?.items?.length || 0
+    const skipped = data?.skipped?.length || 0
+    if (skipped) {
+      const reasons = (data.skipped || []).slice(0, 3).map(item => item.reason || '跳过').join('；')
+      toast.success?.(`已入队 ${created}，跳过 ${skipped}${reasons ? `：${reasons}` : ''}`)
+    } else {
+      toast.success?.(`已入队 ${created} 条`)
+    }
     enqueueSheet.value = false
     nav.value = 'jobs'
     await loadJobs()
@@ -190,37 +266,120 @@ async function confirmEnqueue() {
 }
 
 async function openJob(job) {
-  activeJob.value = job
-  graph.value = (await pluginApi.value.cues(job.job_id)) || { cues: [], notes: [] }
-  nav.value = 'desk'
+  try {
+    activeJob.value = job
+    graph.value = (await pluginApi.value.cues(job.job_id)) || { cues: [], notes: [], briefing: [] }
+    await loadPreview(job)
+    nav.value = 'desk'
+  } catch (error) {
+    toast.error?.(error?.message || '打开工作台失败')
+  }
 }
 
 async function cutIn(job) {
-  await pluginApi.value.cutIn(job.job_id)
-  await loadJobs()
+  if (!(await confirm('把这个任务插到队首？'))) return
+  try {
+    await pluginApi.value.cutIn(job.job_id)
+    await loadJobs()
+  } catch (error) {
+    toast.error?.(error?.message || '插队失败')
+  }
 }
 
 async function changePriority(job, priority) {
-  await pluginApi.value.setPriority(job.job_id, priority)
-  await loadJobs()
+  if (!(await confirm(`改成 ${priority}？`))) return
+  try {
+    await pluginApi.value.setPriority(job.job_id, priority)
+    await loadJobs()
+  } catch (error) {
+    toast.error?.(error?.message || '改优先级失败')
+  }
 }
 
 async function cancelJob(job) {
   if (!(await confirm('取消这个任务？'))) return
-  await pluginApi.value.cancel(job.job_id)
-  await loadJobs()
+  try {
+    await pluginApi.value.cancel(job.job_id)
+    toast.success?.('已取消')
+    await loadJobs()
+  } catch (error) {
+    toast.error?.(error?.message || '取消失败')
+  }
+}
+
+async function retryJob(job) {
+  try {
+    await pluginApi.value.retry(job.job_id)
+    toast.success?.('已重新入队')
+    jobSheet.value = false
+    nav.value = 'jobs'
+    await loadJobs()
+  } catch (error) {
+    toast.error?.(error?.message || '重跑失败')
+  }
+}
+
+async function searchAgain(job) {
+  try {
+    const data = await pluginApi.value.searchJob(job.job_id)
+    toast.success?.(`搜索到 ${(data?.items || []).length} 条结果`)
+  } catch (error) {
+    toast.error?.(error?.message || '搜索失败')
+  }
+}
+
+async function exportCurrent() {
+  if (!activeJob.value?.job_id) return
+  if (!(await confirm('按当前 CueGraph 写盘？会遵循设置里的覆盖策略。'))) return
+  try {
+    const data = await pluginApi.value.exportJob(activeJob.value.job_id)
+    const written = (data?.items || []).filter(item => item.written).length
+    const skipped = (data?.items || []).filter(item => !item.written).length
+    toast.success?.(`已写 ${written} 个文件${skipped ? `，跳过 ${skipped}` : ''}`)
+  } catch (error) {
+    toast.error?.(error?.message || '写盘失败')
+  }
+}
+
+async function downloadAssPreview() {
+  if (!activeJob.value?.job_id) return
+  try {
+    const text = await pluginApi.value.fetchPreviewAss(activeJob.value.job_id)
+    const blob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeJob.value.title || 'preview'}.ass`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    toast.error?.(error?.message || '预览 ASS 失败')
+  }
 }
 
 function openCue(cue) {
-  editingCue.value = { ...cue, texts: { ...(cue.texts || {}) } }
+  editingCue.value = {
+    ...cue,
+    texts: { ...(cue.texts || {}) },
+    start_ms: cue.start_ms,
+    end_ms: cue.end_ms,
+  }
   cueSheet.value = true
 }
 
 async function saveCue() {
-  if (!(await confirm('写回这一句到 CueGraph？'))) return
-  await pluginApi.value.saveCue(activeJob.value.job_id, editingCue.value.cue_id, editingCue.value)
-  cueSheet.value = false
-  graph.value = await pluginApi.value.cues(activeJob.value.job_id)
+  try {
+    await pluginApi.value.saveCue(activeJob.value.job_id, editingCue.value.cue_id, {
+      texts: editingCue.value.texts,
+      start_ms: Number(editingCue.value.start_ms),
+      end_ms: Number(editingCue.value.end_ms),
+    })
+    cueSheet.value = false
+    graph.value = await pluginApi.value.cues(activeJob.value.job_id)
+    toast.success?.('已改句')
+  } catch (error) {
+    toast.error?.(error?.message || '保存句子失败')
+  }
 }
 
 function cueLeft(cue) {
@@ -241,7 +400,35 @@ function moreJob(job) {
   jobSheet.value = true
 }
 
+async function onListModels(endpoint) {
+  try {
+    const data = await pluginApi.value.listModels(endpoint)
+    const items = data?.items || []
+    if (!items.length) {
+      toast.error?.('没有拉到模型')
+      return
+    }
+    modelPicker.value = { open: true, endpointId: endpoint.endpoint_id, items }
+  } catch (error) {
+    toast.error?.(error?.message || '拉模型失败')
+  }
+}
+
+function applyModel(model) {
+  const rows = (config.value.openai_endpoints || []).map(item => (
+    item.endpoint_id === modelPicker.value.endpointId ? { ...item, model } : item
+  ))
+  config.value = { ...config.value, openai_endpoints: rows }
+  dirty.value = true
+  modelPicker.value.open = false
+  toast.success?.(`已选模型 ${model}`)
+}
+
 onMounted(reload)
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  revokePreview()
+})
 defineExpose({ reload, loadStatus: reload })
 </script>
 
@@ -261,7 +448,7 @@ defineExpose({ reload, loadStatus: reload })
       <template v-if="nav === 'media'">
         <div v-if="mediaDetail" class="mb-3">
           <div class="d-flex align-center mb-3">
-            <VBtn icon="mdi-arrow-left" class="ss-touch" @click="mediaDetail = null" />
+            <VBtn icon="mdi-arrow-left" class="ss-touch" aria-label="返回" @click="mediaDetail = null" />
             <strong class="ms-2">{{ mediaDetail.title }}{{ mediaDetail.year ? ` (${mediaDetail.year})` : '' }}</strong>
           </div>
           <div class="text-medium-emphasis mb-2">{{ mediaDetail.library_name || 'MoviePilot 整理记录' }} · {{ mediaDetail.file_count || mediaDetail.files?.length || 0 }} 个文件</div>
@@ -283,11 +470,14 @@ defineExpose({ reload, loadStatus: reload })
             </VListItem>
           </VList>
           <VBtn color="primary" block class="ss-touch mt-3" :disabled="!selectedFiles.length" @click="submitSelected">
-            提交识别（{{ selectedFiles.length }}）
+            提交处理（{{ selectedFiles.length }}）
           </VBtn>
         </div>
         <template v-else>
-          <VTextField v-model="mediaQuery" label="搜索标题或文件名" prepend-inner-icon="mdi-magnify" class="mb-3" @keyup.enter="loadMedia" />
+          <div class="d-flex ga-2 mb-3">
+            <VTextField v-model="mediaQuery" label="搜索标题或文件名" prepend-inner-icon="mdi-magnify" hide-details class="flex-grow-1" @keyup.enter="loadMedia" />
+            <VBtn class="ss-touch" :loading="loading" @click="loadMedia">搜索</VBtn>
+          </div>
           <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
             <VChip :color="!mediaType ? 'primary' : undefined" @click="mediaType = ''; loadMedia()">全部</VChip>
             <VChip :color="mediaType === 'movie' ? 'primary' : undefined" @click="mediaType = 'movie'; loadMedia()">电影</VChip>
@@ -317,16 +507,20 @@ defineExpose({ reload, loadStatus: reload })
       </template>
 
       <template v-else-if="nav === 'jobs'">
-        <VTextField v-model="jobsQuery" label="搜索标题" prepend-inner-icon="mdi-magnify" class="mb-3" @keyup.enter="loadJobs" />
+        <div class="d-flex ga-2 mb-3">
+          <VTextField v-model="jobsQuery" label="搜索标题" prepend-inner-icon="mdi-magnify" hide-details class="flex-grow-1" @keyup.enter="loadJobs" />
+          <VBtn class="ss-touch" @click="loadJobs">搜索</VBtn>
+        </div>
         <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
           <VChip v-for="item in statusFilters" :key="item.value" :color="jobStatus === item.value ? 'primary' : undefined" @click="jobStatus = item.value; loadJobs()">
             {{ item.label }}
           </VChip>
         </div>
+        <VAlert v-if="!jobs.length" type="info" variant="tonal" class="mb-3">队列是空的。从「媒体」勾选文件提交处理。</VAlert>
         <VList>
           <VListItem v-for="job in jobs" :key="job.job_id" class="ss-card mb-2" @click="toggleJobDetail(job)">
             <VListItemTitle>{{ job.title }}</VListItemTitle>
-            <VListItemSubtitle>{{ job.priority }} · {{ statusLabel(job.status) }} · {{ triggerLabel(job.trigger) }}</VListItemSubtitle>
+            <VListItemSubtitle>{{ job.priority }} · {{ statusLabel(job.status) }} · {{ triggerLabel(job.trigger) }}{{ job.is_strm ? ' · STRM' : '' }}</VListItemSubtitle>
             <div v-if="job.status === 'running' || job.progress > 0" class="mt-1 w-100">
               <VProgressLinear :model-value="job.progress" height="6" rounded color="primary" />
               <div class="text-caption text-medium-emphasis">{{ job.stage_detail }} · {{ job.progress }}%</div>
@@ -339,8 +533,9 @@ defineExpose({ reload, loadStatus: reload })
             </div>
             <template #append>
               <VBtn v-if="!isMobile && job.status === 'pending'" size="small" class="ss-touch" @click.stop="cutIn(job)">插队</VBtn>
+              <VBtn v-if="!isMobile && (job.status === 'failed' || job.status === 'cancelled')" size="small" class="ss-touch" @click.stop="retryJob(job)">重跑</VBtn>
               <VBtn v-if="!isMobile" size="small" variant="text" class="ss-touch" @click.stop="openJob(job)">工作台</VBtn>
-              <VBtn icon="mdi-dots-horizontal" class="ss-touch" @click.stop="moreJob(job)" />
+              <VBtn icon="mdi-dots-horizontal" class="ss-touch" aria-label="更多" @click.stop="moreJob(job)" />
             </template>
           </VListItem>
         </VList>
@@ -349,7 +544,14 @@ defineExpose({ reload, loadStatus: reload })
       <template v-else-if="nav === 'desk'">
         <div v-if="!activeJob" class="text-medium-emphasis">从队列打开一个任务。</div>
         <template v-else>
-          <div class="mb-2">{{ activeJob.title }}</div>
+          <div class="d-flex align-center justify-space-between mb-2 flex-wrap ga-2">
+            <div>{{ activeJob.title }}</div>
+            <div class="d-flex ga-2 flex-wrap">
+              <VBtn size="small" color="primary" class="ss-touch" @click="exportCurrent">按当前图写盘</VBtn>
+              <VBtn size="small" variant="tonal" class="ss-touch" @click="searchAgain(activeJob)">重新搜索</VBtn>
+              <VBtn size="small" variant="text" class="ss-touch" @click="downloadAssPreview">预览 ASS</VBtn>
+            </div>
+          </div>
           <PreviewPlayer
             :graph="graph"
             :current-ms="currentMs"
@@ -357,7 +559,7 @@ defineExpose({ reload, loadStatus: reload })
             :tracks="previewTracks"
             :stack="config.lang_stack || 'main_bottom'"
             :style-config="config.ass_style || {}"
-            :video-url="pluginApi.previewVideoUrl(activeJob.job_id)"
+            :video-url="previewObjectUrl"
             :enabled="config.preview_enabled !== false"
             @time="currentMs = $event"
           />
@@ -373,16 +575,18 @@ defineExpose({ reload, loadStatus: reload })
               :key="cue.cue_id"
               type="button"
               class="ss-cue"
+              :aria-label="Object.values(cue.texts || {})[0] || '字幕句'"
               :style="{ left: cueLeft(cue), width: cueWidth(cue) }"
               @click.stop="openCue(cue); currentMs = cue.start_ms"
             >
               {{ Object.values(cue.texts || {})[0] }}
             </button>
           </div>
+          <VAlert v-if="!(graph.cues || []).length" type="info" variant="tonal" class="mb-3">这个任务还没有 CueGraph。等任务跑完或先搜索/识别。</VAlert>
           <VList>
             <VListItem v-for="cue in graph.cues || []" :key="cue.cue_id" @click="openCue(cue)">
               <VListItemTitle>{{ Object.values(cue.texts || {})[0] }}</VListItemTitle>
-              <VListItemSubtitle>{{ cue.start_ms }} – {{ cue.end_ms }}</VListItemSubtitle>
+              <VListItemSubtitle>{{ formatMs(cue.start_ms) }} – {{ formatMs(cue.end_ms) }}</VListItemSubtitle>
             </VListItem>
           </VList>
         </template>
@@ -395,7 +599,7 @@ defineExpose({ reload, loadStatus: reload })
           :mobile="isMobile"
           @dirty="dirty = true"
           @test-endpoint="pluginApi.testEndpoint($event)"
-          @list-models="pluginApi.listModels($event)"
+          @list-models="onListModels"
         />
         <div v-if="dirty" class="ss-savebar pa-3 d-flex ga-2">
           <VBtn color="primary" class="ss-touch" @click="saveConfig">保存</VBtn>
@@ -410,24 +614,24 @@ defineExpose({ reload, loadStatus: reload })
         <VList>
           <VListItem v-if="activeJob?.job_id" title="打开工作台" @click="openJob(activeJob); jobSheet = false" />
           <VListItem v-if="activeJob?.status === 'pending'" title="插队" @click="cutIn(activeJob); jobSheet = false" />
+          <VListItem v-if="activeJob?.status === 'failed' || activeJob?.status === 'cancelled' || activeJob?.status === 'skipped'" title="重跑" @click="retryJob(activeJob)" />
+          <VListItem v-if="activeJob?.job_id" title="重新搜索" @click="searchAgain(activeJob); jobSheet = false" />
           <VListItem title="改成 P0" @click="changePriority(activeJob, 'P0'); jobSheet = false" />
           <VListItem title="改成 P1" @click="changePriority(activeJob, 'P1'); jobSheet = false" />
           <VListItem title="改成 P2" @click="changePriority(activeJob, 'P2'); jobSheet = false" />
           <VListItem title="取消" @click="cancelJob(activeJob); jobSheet = false" />
-          <VListItem v-if="activeJob?.path && !activeJob?.job_id" title="入队" @click="enqueue(activeJob); jobSheet = false" />
         </VList>
       </VCard>
     </VBottomSheet>
 
     <VBottomSheet v-model="enqueueSheet" inset rounded="t-xl">
       <VCard class="pa-4">
-        <VCardTitle>手动提交识别</VCardTitle>
+        <VCardTitle>提交处理</VCardTitle>
         <div class="text-medium-emphasis mb-2">将提交 {{ enqueueForm.items?.length || 1 }} 个文件</div>
-        <VSelect v-model="enqueueForm.strategy" label="本次策略" :items="[
-          { title: '先搜后译', value: 'search_then_translate' },
-          { title: '只搜索', value: 'search_only' },
-          { title: '只识别翻译', value: 'translate_only' },
-        ]" />
+        <VAlert v-if="enqueueHasStrm" type="warning" variant="tonal" class="mb-3">
+          勾选里含 STRM：只搜外挂 / 翻译 / 导出，不做 ASR 和调轴。
+        </VAlert>
+        <VSelect v-model="enqueueForm.strategy" label="本次策略" :items="strategyItems" />
         <VSelect v-model="enqueueForm.priority" label="优先级" :items="['P0', 'P1', 'P2']" />
         <VSwitch v-model="enqueueForm.force" label="强制入队（忽略已有中字等门禁）" hide-details class="mb-2" />
         <VBtn color="primary" block class="ss-touch mt-2" :loading="submitting" @click="confirmEnqueue">确认提交</VBtn>
@@ -444,8 +648,19 @@ defineExpose({ reload, loadStatus: reload })
           :label="langLabel(lang)"
           @update:model-value="editingCue.texts[lang] = $event"
         />
-        <VBtn color="primary" block class="ss-touch" @click="saveCue">写回</VBtn>
+        <VTextField v-model.number="editingCue.start_ms" label="开始（毫秒）" type="number" />
+        <VTextField v-model.number="editingCue.end_ms" label="结束（毫秒）" type="number" />
+        <VBtn color="primary" block class="ss-touch" @click="saveCue">保存到 CueGraph</VBtn>
       </VCard>
     </VBottomSheet>
+
+    <VDialog v-model="modelPicker.open" max-width="420">
+      <VCard>
+        <VCardTitle>选择模型</VCardTitle>
+        <VList>
+          <VListItem v-for="item in modelPicker.items" :key="item" :title="item" @click="applyModel(item)" />
+        </VList>
+      </VCard>
+    </VDialog>
   </div>
 </template>

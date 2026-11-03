@@ -20,22 +20,32 @@ const active = computed(() => {
   return cues.filter(item => item.start_ms <= props.currentMs && props.currentMs < item.end_ms)
 })
 
-const dialogue = computed(() => active.value.filter(item => item.kind !== 'note'))
+const dialogue = computed(() => {
+  const rows = active.value.filter(item => item.kind !== 'note' && item.kind !== 'sdh')
+  if (props.tracks.includes('sdh')) {
+    return active.value.filter(item => item.kind === 'sdh').concat(rows)
+  }
+  return rows
+})
 const notes = computed(() => active.value.filter(item => item.kind === 'note'))
+const showDialogue = computed(() => props.tracks.includes('dialogue') || props.tracks.includes('stacked') || props.tracks.includes('sdh'))
+const stackedMode = computed(() => props.tracks.includes('stacked'))
 
 function textOf(cue, lang) {
   return cue?.texts?.[lang] || cue?.texts?.source || Object.values(cue?.texts || {})[0] || ''
+}
+
+function stackedText(cue) {
+  return (props.langs || []).map(lang => textOf(cue, lang)).filter(Boolean).join('\n')
 }
 
 function lineStyle(index, kind = 'dialogue') {
   const css = overlayCss(props.styleConfig, index, kind)
   if (kind === 'note') return css
   if (props.stack === 'main_top') {
-    // 主上小下：所有语言顶部定位，主在最上，副/再次递增往下
-    return { ...css, top: `${18 + index * 30}px`, bottom: 'auto' }
+    return { ...css, top: `${18 + index * 30}px`, bottom: 'auto', whiteSpace: 'pre-line' }
   }
-  // main_bottom：CSS 默认 bottom 递增，主在底，副在上方
-  return css
+  return { ...css, whiteSpace: 'pre-line' }
 }
 
 function onTime(event) {
@@ -45,9 +55,9 @@ function onTime(event) {
 
 <template>
   <div v-if="enabled" class="ss-player">
-    <video v-if="videoUrl" :src="videoUrl" controls @timeupdate="onTime" />
+    <video v-if="videoUrl" :src="videoUrl" controls playsinline @timeupdate="onTime" />
     <div v-else class="ss-board pa-6 text-center">
-      <div class="text-medium-emphasis">字幕黑板 · 当前没有可播原片</div>
+      <div class="text-medium-emphasis">字幕黑板 · 当前没有可播原片（STRM 或需重新打开任务拉取预览）</div>
     </div>
     <div
       v-if="tracks.includes('notes')"
@@ -58,16 +68,28 @@ function onTime(event) {
     >
       {{ textOf(note) }}
     </div>
-    <template v-if="tracks.includes('dialogue')">
-      <div
-        v-for="(lang, index) in langs"
-        :key="lang"
-        class="ss-overlay dialogue"
-        :class="[`rank${index + 1}`]"
-        :style="lineStyle(index)"
-      >
-        {{ dialogue.map(item => textOf(item, lang)).filter(Boolean).join(' ') }}
-      </div>
+    <template v-if="showDialogue">
+      <template v-if="stackedMode">
+        <div
+          v-for="(cue, index) in dialogue"
+          :key="cue.cue_id"
+          class="ss-overlay dialogue"
+          :style="lineStyle(Math.min(index, 2))"
+        >
+          {{ stackedText(cue) }}
+        </div>
+      </template>
+      <template v-else>
+        <div
+          v-for="(lang, index) in langs"
+          :key="lang"
+          class="ss-overlay dialogue"
+          :class="[`rank${index + 1}`]"
+          :style="lineStyle(index)"
+        >
+          {{ dialogue.map(item => textOf(item, lang)).filter(Boolean).join(' ') }}
+        </div>
+      </template>
     </template>
   </div>
 </template>

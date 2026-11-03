@@ -16,16 +16,16 @@ def test_v2_index_and_class_version_match():
     package = json.loads((ROOT / "package.v2.json").read_text(encoding="utf-8"))
     plugin_pkg = json.loads((plugin_root(GEN) / "package.json").read_text(encoding="utf-8"))
     meta = package["SubtitleStudio"]
-    assert meta["version"] == "1.0.2"
+    assert meta["version"] == "1.0.4"
     assert meta["v3"] is False
     assert meta["system_version"] == ">=2.13.5"
     assert meta["release"] is True
+    assert "v1.0.4" in meta["history"]
     assert "v1.0.2" in meta["history"]
-    assert "v1.0.1" in meta["history"]
     assert "v1.0.0" in meta["history"]
-    assert plugin_pkg["version"] == "1.0.2"
+    assert plugin_pkg["version"] == "1.0.4"
     init = _source("__init__.py")
-    assert 'plugin_version = "1.0.2"' in init
+    assert 'plugin_version = "1.0.4"' in init
     assert 'from app.plugins import _PluginBase' in init
     assert "app.sdk" not in init
 

@@ -11,12 +11,16 @@ from typing import Any, Dict, List
 
 from ..core.config_schema import FIELDS, PANES, apply_export_preset, default_config, normalize_plugin_config
 from ..core.cuegraph import render_ass
+from ..core.errors import user_message
 from ..core.style import style_from_config
 from ..core.history import group_media_items
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
 from ..core.response import fail, ok
-from ..ingest.gates import evaluate_gates
+from ..ingest.gates import evaluate_gates, is_strm_path
 from .schemas import make_envelope, payload_model_for
+
+_SECRET_KEYS = {"assrt_api_key", "opensubtitles_api_key", "api_key"}
+_MEDIA_SUFFIXES = {".mkv", ".mp4", ".avi", ".mov", ".m4v", ".ts", ".m2ts", ".wmv", ".flv", ".webm", ".strm"}
 
 
 def build_api_routes(plugin) -> List[Dict[str, Any]]:
@@ -132,15 +136,17 @@ class StudioApiMixin:
         })
 
     def api_get_config(self) -> Dict[str, Any]:
-        return ok(normalize_plugin_config(self.get_config() or {}))
+        return ok(_mask_config(normalize_plugin_config(self.get_config() or {})))
 
     def api_save_config(self, body: Dict[str, Any] = None) -> Dict[str, Any]:
+        current = normalize_plugin_config(self.get_config() or {})
         payload = normalize_plugin_config(body or {})
+        payload = _restore_masked_secrets(payload, current)
         if payload.get("export_preset"):
             payload = apply_export_preset(payload, payload["export_preset"])
         self.update_config(payload)
         self.init_plugin(payload)
-        return ok(payload, "已保存")
+        return ok(_mask_config(payload), "已保存")
 
     def api_fields(self) -> Dict[str, Any]:
         return ok({"fields": FIELDS, "panes": PANES, "defaults": default_config()})
@@ -168,7 +174,12 @@ class StudioApiMixin:
         ok_gate, reason = evaluate_gates(config, path, data)
         if not path:
             return fail("缺少媒体路径")
-        force = True if data.get("force", True) else False
+        if not _path_allowed(config, path):
+            return fail("媒体路径不在允许范围内")
+        force = bool(data.get("force", False))
+        strategy = str(data.get("strategy") or config.get("transfer_strategy") or "search_then_translate")
+        if is_strm_path(path) and strategy == "translate_only":
+            strategy = "search_then_translate"
         job = self.services.scheduler.enqueue(
             title=str(data.get("title") or Path(path).stem),
             path=path,
@@ -180,7 +191,7 @@ class StudioApiMixin:
             },
             trigger="manual",
             priority=str(data.get("priority") or "P0"),
-            strategy=str(data.get("strategy") or config.get("transfer_strategy") or "search_then_translate"),
+            strategy=strategy,
             config=config,
             payload=data,
             force=force,
@@ -203,7 +214,7 @@ class StudioApiMixin:
                 **item,
                 "strategy": data.get("strategy") or item.get("strategy"),
                 "priority": data.get("priority") or item.get("priority") or "P0",
-                "force": data.get("force", True),
+                "force": bool(data.get("force", False)),
             }
             result = self.api_create_job(payload)
             envelope = result if isinstance(result, dict) else {}
@@ -212,7 +223,10 @@ class StudioApiMixin:
                 created.append(job)
             else:
                 skipped.append({"path": item.get("path"), "reason": envelope.get("message") or "跳过"})
-        return ok({"items": created, "skipped": skipped, "count": len(created)}, f"已入队 {len(created)} 条")
+        message = f"已入队 {len(created)} 条"
+        if skipped:
+            message += f"，跳过 {len(skipped)} 条"
+        return ok({"items": created, "skipped": skipped, "count": len(created)}, message)
 
     def api_get_job(self, job_id: str) -> Dict[str, Any]:
         job = self.services.store.get_job(job_id)
@@ -256,7 +270,9 @@ class StudioApiMixin:
         graph = self.services.store.get_graph(job_id)
         if not graph:
             return fail("没有可编辑的字幕图")
-        cue = graph.replace_cue(cue_id, **(body or {}))
+        data = body or {}
+        allowed = {key: data[key] for key in ("texts", "start_ms", "end_ms", "kind") if key in data}
+        cue = graph.replace_cue(cue_id, **allowed)
         if not cue:
             return fail("句子不存在")
         self.services.store.save_graph(graph)
@@ -288,7 +304,7 @@ class StudioApiMixin:
         try:
             payload = self.services.http("GET", probe, headers=_auth_header(data.get("api_key")), use_proxy=bool(data.get("use_proxy")))
         except Exception as exc:  # noqa: BLE001
-            return fail(str(exc))
+            return fail(user_message(exc, fallback="连通失败"))
         return ok({"ok": True, "payload": _safe_payload(payload)}, "连通")
 
     def api_list_models(self, body: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -301,7 +317,7 @@ class StudioApiMixin:
         try:
             payload = self.services.http("GET", probe, headers=_auth_header(data.get("api_key")), use_proxy=bool(data.get("use_proxy")))
         except Exception as exc:  # noqa: BLE001
-            return fail(str(exc))
+            return fail(user_message(exc, fallback="拉取模型失败"))
         models = []
         rows = payload.get("data") if isinstance(payload, dict) else []
         for item in rows or []:
@@ -337,6 +353,73 @@ def _safe_payload(payload: Any) -> Any:
     if isinstance(payload, dict):
         return {key: value for key, value in payload.items() if key.lower() not in {"key", "token", "authorization"}}
     return True
+
+
+def _mask_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(config or {})
+    for key in _SECRET_KEYS:
+        if out.get(key):
+            out[key] = "********"
+    rows = []
+    for item in out.get("openai_endpoints") or []:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        if row.get("api_key"):
+            row["api_key"] = "********"
+        rows.append(row)
+    if "openai_endpoints" in out:
+        out["openai_endpoints"] = rows
+    return out
+
+
+def _restore_masked_secrets(payload: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(payload or {})
+    for key in _SECRET_KEYS:
+        if out.get(key) in {"", "********"} and current.get(key):
+            if out.get(key) == "********":
+                out[key] = current.get(key)
+    current_eps = {str(item.get("endpoint_id")): item for item in (current.get("openai_endpoints") or []) if isinstance(item, dict)}
+    rows = []
+    for item in out.get("openai_endpoints") or []:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        if row.get("api_key") == "********":
+            old = current_eps.get(str(row.get("endpoint_id"))) or {}
+            row["api_key"] = old.get("api_key") or ""
+        rows.append(row)
+    if "openai_endpoints" in out:
+        out["openai_endpoints"] = rows
+    return out
+
+
+def _path_allowed(config: Dict[str, Any], path: str) -> bool:
+    raw = str(path or "").strip()
+    if not raw or ".." in Path(raw).parts:
+        return False
+    try:
+        resolved = Path(raw).resolve()
+    except OSError:
+        return False
+    suffix = resolved.suffix.lower()
+    if suffix in {".txt", ".json", ".py", ".sh", ".exe", ".dll", ".so", ".conf", ".env"}:
+        return False
+    # 整理记录里的真实媒体文件直接放行；否则要求落在监控根下
+    if resolved.is_file() and (suffix in _MEDIA_SUFFIXES or not suffix):
+        return True
+    roots: List[Path] = []
+    for blob in (config.get("watch_paths"), config.get("strm_paths")):
+        for line in str(blob or "").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    roots.append(Path(line).resolve())
+                except OSError:
+                    continue
+    if not roots:
+        return suffix in _MEDIA_SUFFIXES or not suffix
+    return any(resolved == root or root in resolved.parents for root in roots)
 
 
 def _plain_response(text: str, content_type: str):

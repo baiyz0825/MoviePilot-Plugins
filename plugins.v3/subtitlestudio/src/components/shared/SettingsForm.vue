@@ -52,6 +52,48 @@ function moveLang(index, delta) {
   setField('target_languages', langs)
 }
 
+function moveOrder(key, index, delta) {
+  const rows = [...(config.value[key] || [])]
+  const next = index + delta
+  if (next < 0 || next >= rows.length) return
+  ;[rows[index], rows[next]] = [rows[next], rows[index]]
+  setField(key, rows)
+}
+
+function addOrderItem(key, value, options = []) {
+  const rows = [...(config.value[key] || [])]
+  if (!value || rows.includes(value)) return
+  rows.push(value)
+  setField(key, rows)
+}
+
+function removeOrderItem(key, value) {
+  setField(key, (config.value[key] || []).filter(item => item !== value))
+}
+
+function orderLabel(options, value) {
+  return (options || []).find(item => item.value === value)?.title || value
+}
+
+function roleItems() {
+  return [
+    { title: '主线路（默认）', value: '' },
+    ...(config.value.openai_endpoints || []).map(item => ({
+      title: `${item.name || item.endpoint_id}${item.model ? ` · ${item.model}` : ''}`,
+      value: item.endpoint_id,
+    })),
+  ]
+}
+
+function fieldsForPane(paneId) {
+  const rows = props.fields.length ? props.fields : fallbackFields()
+  return rows.filter(item => {
+    if (item.pane !== paneId || item.mock === 'skip') return false
+    if (item.key === 'notify_on' && !config.value.send_notify) return false
+    return true
+  })
+}
+
 function usePreset(value) {
   config.value = applyPreset(config.value, value)
 }
@@ -184,14 +226,24 @@ function fallbackFields() {
     { pane: 'model', key: 'translate_backend', label: '对白翻译后端', control: 'select', options: [
       { title: '免费引擎优先', value: 'free_first' }, { title: '仅免费引擎', value: 'free_only' }, { title: '仅大模型', value: 'llm_only' },
     ] },
-    { pane: 'model', key: 'mt_engines', label: '免费引擎顺序', control: 'multi', options: [
-      { title: 'Edge', value: 'edge' }, { title: 'Google GTX', value: 'gtx' }, { title: 'DeepLX', value: 'deeplx' },
+    { pane: 'model', key: 'mt_engines', label: '免费引擎顺序', control: 'order', options: [
+      { title: 'Edge', value: 'edge' }, { title: 'Google GTX', value: 'gtx' }, { title: 'DeepLX', value: 'deeplx' }, { title: 'LibreTranslate', value: 'libre' },
     ] },
     { pane: 'model', key: 'openai_fallback_enabled', label: '自动 fallback', control: 'switch' },
     { pane: 'model', key: 'openai_endpoints', label: 'API 线路', control: 'endpoints' },
+    { pane: 'model', key: 'role_translate', label: '角色：译', control: 'role' },
+    { pane: 'model', key: 'role_judge', label: '角色：质检', control: 'role' },
+    { pane: 'model', key: 'role_correct', label: '角色：纠错', control: 'role' },
+    { pane: 'model', key: 'role_research', label: '角色：检索', control: 'role' },
     { pane: 'model', key: 'enable_batch', label: '启用批量翻译', control: 'switch' },
     { pane: 'model', key: 'batch_size', label: '每批句数', control: 'number' },
-    { pane: 'model', key: 'parallel_workers', label: '并发线程', control: 'number' },
+    { pane: 'model', key: 'parallel_workers', label: '单任务翻译并发', control: 'number' },
+    { pane: 'search', key: 'search_language_priority', label: '搜索语言优先', control: 'order', options: [
+      { title: '双语', value: 'bilingual' }, { title: '简中', value: 'zh-Hans' }, { title: '繁中', value: 'zh-Hant' }, { title: '英', value: 'en' },
+    ] },
+    { pane: 'search', key: 'search_format_priority', label: '搜索格式优先', control: 'order', options: [
+      { title: 'ASS', value: 'ass' }, { title: 'SRT', value: 'srt' }, { title: 'SSA', value: 'ssa' }, { title: 'VTT', value: 'vtt' },
+    ] },
     { pane: 'model', key: 'context_window', label: '上下文窗口', control: 'number' },
     { pane: 'quality', key: 'format_repair_enabled', label: '自动修复模型输出格式', control: 'switch' },
     { pane: 'quality', key: 'asr_repair_enabled', label: '自动修复 ASR 轴和分段', control: 'switch' },
@@ -216,11 +268,143 @@ const files = computed(() => exportPreview(config.value))
     <VBtnToggle v-if="!mobile" v-model="pane" mandatory density="comfortable" class="mb-4 flex-wrap">
       <VBtn v-for="item in PANES" :key="item[0]" :value="item[0]" class="ss-touch">{{ item[1] }}</VBtn>
     </VBtnToggle>
-    <VExpansionPanels v-else v-model="pane">
-      <VExpansionPanel v-for="item in PANES" :key="item[0]" :value="item[0]" :title="item[1]" />
+    <VExpansionPanels v-else v-model="pane" class="mb-2">
+      <VExpansionPanel v-for="item in PANES" :key="item[0]" :value="item[0]">
+        <VExpansionPanelTitle>{{ item[1] }}</VExpansionPanelTitle>
+        <VExpansionPanelText>
+          <div class="text-medium-emphasis mb-3">{{ item[2] || '本组设置' }}</div>
+          <template v-for="field in fieldsForPane(item[0])" :key="`m-${field.key}`">
+            <div class="mb-5">
+              <VSwitch
+                v-if="field.control === 'switch'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                color="primary"
+                hide-details
+                @update:model-value="setField(field.key, $event)"
+              />
+              <VTextarea
+                v-else-if="field.control === 'textarea'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                :placeholder="field.placeholder"
+                auto-grow
+                :rows="field.rows || 4"
+                @update:model-value="setField(field.key, $event)"
+              />
+              <VTextField
+                v-else-if="field.control === 'password'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                type="password"
+                @update:model-value="setField(field.key, $event)"
+              />
+              <VTextField
+                v-else-if="field.control === 'number'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                type="number"
+                @update:model-value="setField(field.key, Number($event))"
+              />
+              <VTextField
+                v-else-if="field.control === 'text'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                :placeholder="field.placeholder"
+                @update:model-value="setField(field.key, $event)"
+              />
+              <VSelect
+                v-else-if="field.control === 'select'"
+                :model-value="config[field.key]"
+                :label="field.label"
+                :items="field.options"
+                @update:model-value="setField(field.key, $event)"
+              />
+              <div v-else-if="field.control === 'multi'">
+                <div class="text-body-2 mb-2">{{ field.label }}</div>
+                <VChip
+                  v-for="option in field.options"
+                  :key="option.value"
+                  class="ma-1 ss-touch"
+                  :color="(config[field.key] || []).includes(option.value) ? 'primary' : undefined"
+                  filter
+                  @click="toggleList(field.key, option.value)"
+                >
+                  {{ option.title }}
+                </VChip>
+              </div>
+              <div v-else-if="field.control === 'order'">
+                <div class="text-body-2 mb-2">{{ field.label }}</div>
+                <div v-for="(value, index) in config[field.key] || []" :key="`${field.key}-${value}`" class="d-flex align-center ga-2 mb-2">
+                  <VChip color="primary">{{ index + 1 }} · {{ orderLabel(field.options, value) }}</VChip>
+                  <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveOrder(field.key, index, -1)" />
+                  <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveOrder(field.key, index, 1)" />
+                  <VBtn icon="mdi-close" size="small" class="ss-touch" @click="removeOrderItem(field.key, value)" />
+                </div>
+                <VChip
+                  v-for="option in (field.options || []).filter(opt => !(config[field.key] || []).includes(opt.value))"
+                  :key="option.value"
+                  class="ma-1 ss-touch"
+                  @click="addOrderItem(field.key, option.value)"
+                >
+                  加 {{ option.title }}
+                </VChip>
+              </div>
+              <VSelect
+                v-else-if="field.control === 'role'"
+                :model-value="config[field.key] || ''"
+                :label="field.label"
+                :items="roleItems()"
+                @update:model-value="setField(field.key, $event)"
+              />
+              <div v-else-if="field.control === 'preset'">
+                <div class="text-body-2 mb-2">{{ field.label }}</div>
+                <VCard
+                  v-for="preset in PRESETS"
+                  :key="preset.value"
+                  class="ss-card mb-2"
+                  :color="config.export_preset === preset.value ? 'primary' : undefined"
+                  variant="tonal"
+                  @click="usePreset(preset.value)"
+                >
+                  <VCardTitle class="text-subtitle-1">{{ preset.title }}</VCardTitle>
+                  <VCardText>{{ preset.hint }}</VCardText>
+                </VCard>
+              </div>
+              <div v-else-if="field.control === 'lang-order'">
+                <div class="text-body-2 mb-2">{{ field.label }}</div>
+                <div v-for="(lang, index) in config.target_languages || []" :key="lang" class="d-flex align-center ga-2 mb-2">
+                  <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ sizeForRank(index, assStyle) }}px</VChip>
+                  <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveLang(index, -1)" />
+                  <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveLang(index, 1)" />
+                  <VBtn icon="mdi-close" size="small" class="ss-touch" @click="toggleList('target_languages', lang)" />
+                </div>
+              </div>
+              <div v-else-if="field.control === 'endpoints'">
+                <div class="d-flex align-center mb-2">
+                  <div class="text-body-2">{{ field.label }}</div>
+                  <VSpacer />
+                  <VBtn size="small" class="ss-touch" @click="addEndpoint">加线路</VBtn>
+                </div>
+                <VCard v-for="(endpoint, index) in config.openai_endpoints || []" :key="endpoint.endpoint_id" class="ss-card mb-3 pa-3">
+                  <VTextField :model-value="endpoint.name" label="名称" @update:model-value="updateEndpoint(index, { name: $event })" />
+                  <VTextField :model-value="endpoint.api_url" label="API URL" @update:model-value="updateEndpoint(index, { api_url: $event })" />
+                  <VTextField :model-value="endpoint.api_key" label="API Key" type="password" @update:model-value="updateEndpoint(index, { api_key: $event })" />
+                  <VTextField :model-value="endpoint.model" label="模型" @update:model-value="updateEndpoint(index, { model: $event })" />
+                  <div class="d-flex ga-2 mt-2">
+                    <VBtn size="small" class="ss-touch" @click="$emit('test-endpoint', endpoint)">测连通</VBtn>
+                    <VBtn size="small" class="ss-touch" @click="$emit('list-models', endpoint)">拉模型</VBtn>
+                  </div>
+                </VCard>
+              </div>
+              <div class="ss-help">{{ field.purpose }} {{ field.after }}</div>
+            </div>
+          </template>
+        </VExpansionPanelText>
+      </VExpansionPanel>
     </VExpansionPanels>
 
-    <div class="mt-4">
+    <div v-if="!mobile" class="mt-4">
       <template v-for="field in grouped" :key="field.key">
         <div class="mb-5">
           <VSwitch
@@ -281,6 +465,30 @@ const files = computed(() => exportPreview(config.value))
               {{ option.title }}
             </VChip>
           </div>
+          <div v-else-if="field.control === 'order'">
+            <div class="text-body-2 mb-2">{{ field.label }}</div>
+            <div v-for="(value, index) in config[field.key] || []" :key="`${field.key}-${value}`" class="d-flex align-center ga-2 mb-2">
+              <VChip color="primary">{{ index + 1 }} · {{ orderLabel(field.options, value) }}</VChip>
+              <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveOrder(field.key, index, -1)" />
+              <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveOrder(field.key, index, 1)" />
+              <VBtn icon="mdi-close" size="small" class="ss-touch" @click="removeOrderItem(field.key, value)" />
+            </div>
+            <VChip
+              v-for="option in (field.options || []).filter(opt => !(config[field.key] || []).includes(opt.value))"
+              :key="option.value"
+              class="ma-1 ss-touch"
+              @click="addOrderItem(field.key, option.value)"
+            >
+              加 {{ option.title }}
+            </VChip>
+          </div>
+          <VSelect
+            v-else-if="field.control === 'role'"
+            :model-value="config[field.key] || ''"
+            :label="field.label"
+            :items="roleItems()"
+            @update:model-value="setField(field.key, $event)"
+          />
           <div v-else-if="field.control === 'preset'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
             <VRow dense>

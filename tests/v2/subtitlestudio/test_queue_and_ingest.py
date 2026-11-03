@@ -26,6 +26,23 @@ def test_gates_skip_existing_chinese(tmp_path: Path, gen: str = GEN):
     assert "中字" in reason
 
 
+def test_reclaim_orphan_running_unblocks_queue(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    sched_mod = load_domain(gen, "pipeline.scheduler")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    stuck = models.Job(job_id="stuck", title="Stuck", path="/stuck.mkv", status="running", priority="P0")
+    store.save_job(stuck)
+    assert store.running_job() is not None
+    scheduler = sched_mod.JobScheduler(store, lambda job: None)
+    scheduler.start()
+    scheduler.stop()
+    stuck = store.get_job("stuck")
+    assert stuck.status == "failed"
+    assert "回收" in (stuck.error or "")
+    assert store.running_job() is None
+
+
 def test_job_store_cut_in_does_not_touch_running(tmp_path: Path, gen: str = GEN):
     store_mod = load_domain(gen, "storage.job_store")
     sched_mod = load_domain(gen, "pipeline.scheduler")

@@ -121,8 +121,8 @@ def test_generation_writes_step_logs(tmp_path: Path, gen: str = GEN):
     text = "\n".join(lines)
     assert "[SubtitleStudio] [Step 0] 开始处理" in text
     assert "[Step 1] 查找本地外挂" in text
-    assert "[Step 4] 翻译开始" in text
-    assert "[Step 6] 写出导出包" in text
+    assert "[Step 5] 翻译开始" in text
+    assert "[Step 7] 写出导出包" in text
     assert "处理完成" in text
 
 

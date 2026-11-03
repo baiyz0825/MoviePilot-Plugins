@@ -2,10 +2,12 @@
 
 语种 × 版式 × 格式 是对白乘法。notes / SDH / ASR 各有开关，不进乘法。
 覆盖策略在落盘时执行：跳过 / 备份后替换 / 直接覆盖。
+写盘走临时文件 + os.replace，避免中途崩溃截断成品。
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -26,6 +28,20 @@ def _encode(text: str, encoding: str) -> bytes:
     if codec == "gb18030":
         return text.encode("gb18030", errors="replace")
     return text.encode("utf-8")
+
+
+def _atomic_write(target: Path, payload: bytes) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_bytes(payload)
+        os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _render_dialogue(graph: CueGraph, plan: Dict[str, Any], style: Dict[str, Any] | None = None) -> str:
@@ -61,12 +77,11 @@ def _render_notes(graph: CueGraph, plan: Dict[str, Any], style: Dict[str, Any] |
     return render_ass(notes_only, plan.get("langs") or ["zh-Hans"], include_notes=True, title="notes", style=style)
 
 
-def _render_sdh(graph: CueGraph, plan: Dict[str, Any]) -> str:
-    sdh = CueGraph(
-        job_id=graph.job_id,
-        cues=[item for item in graph.cues if item.kind == "sdh"] or list(graph.cues),
-        duration_ms=graph.duration_ms,
-    )
+def _render_sdh(graph: CueGraph, plan: Dict[str, Any]) -> Optional[str]:
+    sdh_cues = [item for item in graph.cues if item.kind == "sdh"]
+    if not sdh_cues:
+        return None
+    sdh = CueGraph(job_id=graph.job_id, cues=sdh_cues, duration_ms=graph.duration_ms)
     lang = (plan.get("langs") or ["zh-Hans"])[0]
     return render_srt(sdh, lang, fallback_lang=graph.source_lang)
 
@@ -77,9 +92,11 @@ def render_plan_text(
     *,
     asr_graph: Optional[CueGraph] = None,
     style: Dict[str, Any] | None = None,
-) -> str:
+) -> Optional[str]:
     kind = plan.get("kind") or "dialogue"
     if kind == "notes":
+        if not graph.notes:
+            return None
         return _render_notes(graph, plan, style)
     if kind == "sdh":
         return _render_sdh(graph, plan)
@@ -118,19 +135,24 @@ def write_export_pack(
     results = []
     for plan in build_export_manifest(config, media_path, asr_ran=asr_ran, source_lang=graph.source_lang):
         target = directory / plan["filename"]
+        text = render_plan_text(graph, plan, asr_graph=asr_graph, style=style_from_config(config))
+        if text is None:
+            results.append({**plan, "path": str(target), "written": False, "reason": "empty"})
+            continue
         existed = target.exists()
         if existed and policy == "skip":
             results.append({**plan, "path": str(target), "written": False, "reason": "skipped"})
             continue
-        if existed and policy == "backup":
-            backup = target.with_suffix(target.suffix + ".bak")
-            shutil.copy2(target, backup)
-        text = render_plan_text(graph, plan, asr_graph=asr_graph, style=style_from_config(config))
-        payload = _encode(text, encoding)
-        if write:
-            write(target, payload)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
-        results.append({**plan, "path": str(target), "written": True, "reason": "ok"})
+        try:
+            if existed and policy == "backup":
+                backup = target.with_suffix(target.suffix + ".bak")
+                shutil.copy2(target, backup)
+            payload = _encode(text, encoding)
+            if write:
+                write(target, payload)
+            else:
+                _atomic_write(target, payload)
+            results.append({**plan, "path": str(target), "written": True, "reason": "ok"})
+        except OSError as exc:
+            results.append({**plan, "path": str(target), "written": False, "reason": "error", "error": str(exc)})
     return results

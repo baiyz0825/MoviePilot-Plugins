@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, time as dt_time
 from typing import Any, Callable, Dict, Optional
 
+from ..core.errors import JobCancelled, user_message
 from ..core.logging import studio_done, studio_log
 from ..core.models import Job
 from ..core.notify import should_notify
@@ -60,18 +61,28 @@ class JobScheduler:
         self._stop = threading.Event()
         self._worker: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._busy = threading.Event()
 
     def start(self) -> None:
-        if self._worker and self._worker.is_alive():
-            return
-        self._stop.clear()
-        self._worker = threading.Thread(target=self._loop, name="subtitlestudio-queue", daemon=True)
-        self._worker.start()
+        with self._lock:
+            reclaimed = self.store.reclaim_orphan_running()
+            if reclaimed:
+                studio_log(self.logger, "warning", "回收孤儿 running 任务 %s 条", reclaimed)
+            if self._worker and self._worker.is_alive():
+                return
+            self._stop.clear()
+            self._worker = threading.Thread(target=self._loop, name="subtitlestudio-queue", daemon=True)
+            self._worker.start()
 
     def stop(self) -> None:
         self._stop.set()
-        if self._worker and self._worker.is_alive():
-            self._worker.join(timeout=2)
+        worker = self._worker
+        if worker and worker.is_alive():
+            # 尽量等当前任务收尾，避免置空后旧线程与新线程双跑
+            worker.join(timeout=8 if self._busy.is_set() else 2)
+            if worker.is_alive():
+                studio_log(self.logger, "warning", "队列工作线程未在超时内退出，保留引用避免双开")
+                return
         self._worker = None
 
     def enqueue(
@@ -111,11 +122,16 @@ class JobScheduler:
             saved = self.store.save_job(job)
             self._maybe_notify(saved)
             return saved
-        if trigger != "manual" and not force and not self.debouncer.allow(identity, path):
-            studio_log(self.logger, "info", "5 分钟防抖，跳过重复入队 trigger=%s path=%s", trigger, path)
-            existing = next((item for item in self.store.list_jobs(q=path, limit=20) if item.path == path), None)
-            if existing:
-                return existing
+        if trigger != "manual" and not force:
+            active = self.store.find_active_by_path(path, within_seconds=self.debouncer.window_seconds)
+            if active and active.status in {"pending", "running"}:
+                studio_log(self.logger, "info", "路径已有活动任务，跳过重复入队 job=%s path=%s", active.job_id, path)
+                return active
+            if not self.debouncer.allow(identity, path):
+                studio_log(self.logger, "info", "5 分钟防抖，跳过重复入队 trigger=%s path=%s", trigger, path)
+                existing = active or self.store.find_active_by_path(path, within_seconds=self.debouncer.window_seconds)
+                if existing:
+                    return existing
         job = Job(
             job_id=uuid.uuid4().hex,
             title=title or path,
@@ -188,7 +204,10 @@ class JobScheduler:
         job.error = ""
         job.finished_at = ""
         job.started_at = ""
-        job.payload = {k: v for k, v in job.payload.items() if k != "cancel"}
+        job.progress = 0
+        job.stage = ""
+        job.stage_detail = ""
+        job.payload = {k: v for k, v in job.payload.items() if k not in {"cancel", "reclaimed"}}
         job.queue_rank = self.store.tail_queue_rank()
         saved = self.store.save_job(job)
         studio_log(self.logger, "info", "重试入队 job=%s title=%s", saved.job_id, saved.title)
@@ -225,21 +244,35 @@ class JobScheduler:
         job = pending[0]
         job.status = "running"
         job.started_at = utc_now()
+        job.error = ""
         self.store.save_job(job)
         studio_log(self.logger, "info", "开始执行 job=%s title=%s priority=%s", job.job_id, job.title, job.priority)
+        self._busy.set()
         try:
             self.runner(job)
             latest = self.store.get_job(job.job_id) or job
-            if latest.payload.get("cancel"):
+            if latest.payload.get("cancel") or latest.status == "cancelled":
                 latest.status = "cancelled"
+                latest.error = latest.error or "任务已取消"
             elif latest.status == "running":
                 latest.status = "success"
             latest.finished_at = utc_now()
             self.store.save_job(latest)
             studio_log(self.logger, "info", "队列回收 job=%s status=%s", latest.job_id, latest.status)
+            if latest.status in {"success", "cancelled", "failed", "skipped"}:
+                self._maybe_notify(latest)
+        except JobCancelled:
+            latest = self.store.get_job(job.job_id) or job
+            latest.status = "cancelled"
+            latest.error = "任务已取消"
+            latest.finished_at = utc_now()
+            self.store.save_job(latest)
+            studio_log(self.logger, "info", "任务取消 job=%s", latest.job_id)
+            self._maybe_notify(latest)
+            studio_done(self.logger)
         except Exception as exc:  # noqa: BLE001
             job.status = "failed"
-            job.error = str(exc)
+            job.error = user_message(exc, fallback="任务执行失败")
             job.finished_at = utc_now()
             self.store.save_job(job)
             studio_log(self.logger, "error", "任务失败 job=%s title=%s error=%s", job.job_id, job.title, exc)
@@ -247,6 +280,8 @@ class JobScheduler:
                 self.logger.error(traceback.format_exc())
             self._maybe_notify(job)
             studio_done(self.logger)
+        finally:
+            self._busy.clear()
 
     def _maybe_notify(self, job: Job) -> None:
         getter = getattr(self, "config_getter", None)

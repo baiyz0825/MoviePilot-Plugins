@@ -145,13 +145,16 @@ class CueGraph:
             if cue.start_ms <= position_ms < cue.end_ms
         ]
 
+    _CUE_EDIT_KEYS = {"texts", "start_ms", "end_ms", "kind", "issues"}
+
     def replace_cue(self, cue_id: str, **changes: Any) -> Optional[Cue]:
+        allowed = {key: value for key, value in changes.items() if key in self._CUE_EDIT_KEYS}
         for bucket in (self.cues, self.notes):
             for index, cue in enumerate(bucket):
                 if cue.cue_id != cue_id:
                     continue
                 payload = cue.to_dict()
-                payload.update(changes)
+                payload.update(allowed)
                 bucket[index] = Cue.from_dict(payload)
                 return bucket[index]
         return None

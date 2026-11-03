@@ -33,11 +33,22 @@ def clip_brief(text: str) -> str:
 
 
 class EffectsBuilder:
-    def __init__(self, config: Dict[str, Any], *, research: Optional[Callable[..., str]] = None, web_search: Optional[Callable[..., tuple]] = None, logger: Any = None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        *,
+        research: Optional[Callable[..., str]] = None,
+        web_search: Optional[Callable[..., tuple]] = None,
+        logger: Any = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ):
         self.config = config
         self.research = research
         self.web_search = web_search
         self.logger = logger
+        self.cancel_check = cancel_check
+        self._research_used = 0
+        self._research_failures = 0
 
     def apply(self, graph: CueGraph, *, title: str = "") -> CueGraph:
         if not self.config.get("effects_enabled"):
@@ -45,12 +56,26 @@ class EffectsBuilder:
             graph.briefing = []
             return graph
         density_ms = int(float(self.config.get("effects_density_minutes") or 2.5) * 60 * 1000)
+        max_research = max(1, int(self.config.get("effects_max_research") or 24))
         seen = set()
         last_note_at = -10**9
         notes: List[Cue] = []
         briefing: List[Dict[str, Any]] = []
         if self.config.get("effects_character_briefs", True) or self.config.get("effects_keyword_notes", True):
             for cue in graph.sorted_cues():
+                if callable(self.cancel_check):
+                    self.cancel_check()
+                if self._research_used >= max_research or self._research_failures >= 8:
+                    # 预算用尽后不再逐句灌 Briefing，只留一条总说明，避免把整片专名刷爆
+                    if self.config.get("effects_briefing", True) and not any(
+                        item.get("term") == "__budget__" for item in briefing
+                    ):
+                        briefing.append({
+                            "term": "__budget__",
+                            "cue_id": cue.cue_id,
+                            "text": "人物检索预算用尽，后续专名已跳过",
+                        })
+                    continue
                 terms = extract_terms(cue.text())
                 for term in terms:
                     if term in seen:
@@ -85,13 +110,18 @@ class EffectsBuilder:
         return graph
 
     def _research_term(self, term: str, title: str) -> tuple:
+        self._research_used += 1
+        if callable(self.cancel_check):
+            self.cancel_check()
         # 1. 网络检索优先（维基百科 → DuckDuckGo）
         if self.web_search:
             try:
                 text, confirmed = self.web_search(term, title)
                 if text:
+                    self._research_failures = 0
                     return text, confirmed
             except Exception as exc:  # noqa: BLE001
+                self._research_failures += 1
                 studio_log(self.logger, "debug", "网络检索失败 %s：%s", term, exc)
         # 2. LLM 兜底
         if not self.research:
@@ -104,9 +134,12 @@ class EffectsBuilder:
                 role="research",
             )
         except Exception as exc:  # noqa: BLE001
+            self._research_failures += 1
             studio_log(self.logger, "warning", "检索失败 %s：%s", term, exc)
             return "", False
         text = str(raw or "").strip()
         if not text or "UNVERIFIED" in text.upper():
+            self._research_failures += 1
             return "", False
+        self._research_failures = 0
         return text, True

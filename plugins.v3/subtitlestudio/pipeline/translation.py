@@ -46,12 +46,17 @@ class TranslationService:
         http: Callable[..., Any],
         llm: Optional[LlmFn] = None,
         logger: Any = None,
+        cancel_check: Optional[Callable[[], None]] = None,
     ):
         self.config = config
         self.http = http
         self.llm = llm
         self.logger = logger
-        self.mt = FreeMtRouter(http, config, logger)
+        self.cancel_check = cancel_check
+        self.mt = FreeMtRouter(http, config, logger, cancel_check=cancel_check)
+        self._llm_calls = 0
+        self._max_llm_calls = max(8, int(config.get("max_llm_calls_per_lang") or 120))
+        self._max_repair_depth = max(1, int(config.get("max_repair_depth") or 4))
 
     def translate_graph(self, graph: CueGraph, target_langs: Sequence[str]) -> CueGraph:
         if not self.config.get("translate_enabled", True):
@@ -62,6 +67,8 @@ class TranslationService:
         return graph
 
     def _translate_lang(self, graph: CueGraph, lang: str) -> None:
+        if callable(self.cancel_check):
+            self.cancel_check()
         pending = [cue for cue in graph.sorted_cues() if not cue.text(lang)]
         if not pending:
             studio_log(self.logger, "info", "语种 %s 已有译文，跳过", lang)
@@ -77,7 +84,7 @@ class TranslationService:
                         cue.texts[lang] = text
             except Exception as exc:  # noqa: BLE001
                 if backend == "free_only":
-                    self._mark_failed(pending, lang, str(exc))
+                    self._mark_failed(pending, lang, "免费翻译失败")
                     return
                 studio_log(self.logger, "warning", "免费引擎失败，改走大模型：%s", exc)
         leftover = [cue for cue in pending if not cue.text(lang)]
@@ -101,13 +108,25 @@ class TranslationService:
         lookup = {cue.cue_id: cue for cue in cues}
         total = len(chunks)
         for index, chunk in enumerate(chunks, start=1):
+            if callable(self.cancel_check):
+                self.cancel_check()
+            if self._llm_calls >= self._max_llm_calls:
+                studio_log(self.logger, "warning", "大模型调用预算用尽 lang=%s", lang)
+                self._mark_failed([lookup[item["id"]] for item in chunk if item["id"] in lookup], lang, "大模型调用预算用尽")
+                continue
             if total > 1 and (index == 1 or index == total or index % max(1, total // 10) == 0):
                 studio_log(self.logger, "info", "大模型翻译进度 %s/%s 批 lang=%s", index, total, lang)
-            self._run_chunk(chunk, lookup, lang, context_window, partial)
+            self._run_chunk(chunk, lookup, lang, context_window, partial, depth=0)
 
-    def _run_chunk(self, chunk, lookup, lang: str, context_window: int, partial: bool) -> None:
+    def _run_chunk(self, chunk, lookup, lang: str, context_window: int, partial: bool, *, depth: int) -> None:
+        if callable(self.cancel_check):
+            self.cancel_check()
+        if self._llm_calls >= self._max_llm_calls:
+            self._mark_failed([lookup[item["id"]] for item in chunk if item["id"] in lookup], lang, "大模型调用预算用尽")
+            return
         expected = [item["id"] for item in chunk]
         prompt = build_batch_prompt(chunk, context_window)
+        self._llm_calls += 1
         raw = self.llm(prompt, system=TRANSLATE_SYSTEM, role="translate")
         mapped, missing, _steps = repair_model_batch(raw, expected, partial_accept=partial) if self.config.get("format_repair_enabled", True) else ({}, expected, [])
         if not mapped and not self.config.get("format_repair_enabled", True):
@@ -120,16 +139,19 @@ class TranslationService:
         for cue_id, text in mapped.items():
             if cue_id in lookup and text:
                 lookup[cue_id].texts[lang] = text
-        if missing and len(chunk) > 1:
+        if missing and len(chunk) > 1 and depth < self._max_repair_depth:
             half = max(1, len(chunk) // 2)
-            self._run_chunk(chunk[:half], lookup, lang, context_window, partial)
-            self._run_chunk(chunk[half:], lookup, lang, context_window, partial)
+            self._run_chunk(chunk[:half], lookup, lang, context_window, partial, depth=depth + 1)
+            self._run_chunk(chunk[half:], lookup, lang, context_window, partial, depth=depth + 1)
             return
-        if missing and len(chunk) == 1:
-            cue = lookup[missing[0]]
-            if self.config.get("write_failure_placeholder"):
-                cue.texts[lang] = "[翻译失败]"
-            cue.issues.append(Issue(code="translate_failed", message="该句未能对齐译文", cue_id=cue.cue_id))
+        if missing:
+            for cue_id in missing:
+                cue = lookup.get(cue_id)
+                if not cue:
+                    continue
+                if self.config.get("write_failure_placeholder"):
+                    cue.texts[lang] = "[翻译失败]"
+                cue.issues.append(Issue(code="translate_failed", message="该句未能对齐译文", cue_id=cue.cue_id))
 
     def _mark_failed(self, cues, lang: str, message: str) -> None:
         for cue in cues:

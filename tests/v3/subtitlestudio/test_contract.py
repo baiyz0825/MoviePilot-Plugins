@@ -16,15 +16,15 @@ def test_v3_index_and_class_version_match():
     package = json.loads((ROOT / "package.v3.json").read_text(encoding="utf-8"))
     plugin_pkg = json.loads((plugin_root(GEN) / "package.json").read_text(encoding="utf-8"))
     meta = package["SubtitleStudio"]
-    assert meta["version"] == "2.0.2"
+    assert meta["version"] == "2.0.4"
     assert meta["system_version"] == ">=3.0.0"
     assert meta["release"] is True
+    assert "v2.0.4" in meta["history"]
     assert "v2.0.2" in meta["history"]
-    assert "v2.0.1" in meta["history"]
     assert "v2.0.0" in meta["history"]
-    assert plugin_pkg["version"] == "2.0.2"
+    assert plugin_pkg["version"] == "2.0.4"
     init = _source("__init__.py")
-    assert 'plugin_version = "2.0.2"' in init
+    assert 'plugin_version = "2.0.4"' in init
     assert "app.sdk.plugin" in init
     assert "from app.core.event" not in init
     assert "from app.log import logger" not in init
@@ -82,15 +82,14 @@ def test_v3_does_not_register_events_at_import():
 
 
 def test_v3_requirements_use_httpx2():
-    req = _source("requirements.txt")
-    assert "httpx2" in req
-    assert "httpx>=" not in req
+    # V3 依赖只声明在 pyproject.toml，不再维护 requirements.txt
+    assert not (plugin_root(GEN) / "requirements.txt").exists()
     pyproject = _source("pyproject.toml")
     assert 'dynamic = ["version"]' in pyproject
     assert "requires-python" in pyproject
     assert "httpx2" in pyproject
-    assert "faster-whisper" in pyproject
     assert 'version = "2.0.0"' not in pyproject
+    assert "httpx>=" not in pyproject
 
 
 def test_domain_has_no_app_imports():
