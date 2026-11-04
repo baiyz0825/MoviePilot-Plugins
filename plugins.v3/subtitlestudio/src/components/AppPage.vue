@@ -28,6 +28,7 @@ const dirty = ref(false)
 const mediaQuery = ref('')
 const mediaType = ref('')
 const mediaGroups = ref([])
+const failedPosterUrls = ref(new Set())
 const mediaCounts = ref({ files: 0, groups: 0 })
 const mediaDetail = ref(null)
 const selectedPaths = ref({})
@@ -67,6 +68,9 @@ const expandedJob = ref(null)
 function statusLabel(s) { return STATUS_LABELS[s] || s }
 function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
 function trackLabel(t) { return TRACK_LABELS[t] || t }
+function markPosterFailed(url) {
+  failedPosterUrls.value = new Set(failedPosterUrls.value).add(url)
+}
 function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id }
 function formatMs(ms) {
   const total = Math.max(0, Math.floor(Number(ms) || 0) / 1000)
@@ -232,6 +236,8 @@ async function submitSelected() {
     toast.error?.('先勾选要处理的文件')
     return
   }
+  const completedCount = selectedFiles.value.filter(item => item.already_processed).length
+  if (completedCount && !(await confirm(`${completedCount} 个文件已有成功处理记录。再次提交会重新执行并消耗模型资源，仍要继续吗？`))) return
   enqueueForm.items = selectedFiles.value
   enqueueForm.force = false
   enqueueSheet.value = true
@@ -466,7 +472,7 @@ defineExpose({ reload, loadStatus: reload })
                 />
               </template>
               <VListItemTitle>{{ fileLabel(item) }}</VListItemTitle>
-              <VListItemSubtitle>{{ item.sidecars?.length || 0 }} 条外挂{{ item.is_strm ? ' · STRM' : '' }}</VListItemSubtitle>
+              <VListItemSubtitle>{{ item.sidecars?.length || 0 }} 条外挂{{ item.is_strm ? ' · STRM' : '' }}{{ item.already_processed ? ' · 已成功处理' : '' }}</VListItemSubtitle>
             </VListItem>
           </VList>
           <VBtn color="primary" block class="ss-touch mt-3" :disabled="!selectedFiles.length" @click="submitSelected">
@@ -495,11 +501,24 @@ defineExpose({ reload, loadStatus: reload })
               class="ss-card mb-2"
               @click="openGroup(item)"
             >
-              <template v-if="item.poster" #prepend>
-                <img :src="item.poster" alt="" width="40" height="56" style="object-fit:cover;border-radius:4px" />
+              <template #prepend>
+                <div class="ss-media-poster" aria-hidden="true">
+                  <img
+                    v-if="item.poster && !failedPosterUrls.has(item.poster)"
+                    :src="item.poster"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    @error="markPosterFailed(item.poster)"
+                  />
+                  <VIcon v-else icon="mdi-movie-open-outline" />
+                </div>
               </template>
               <VListItemTitle>{{ item.title }}{{ item.year ? ` (${item.year})` : '' }}</VListItemTitle>
-              <VListItemSubtitle>{{ item.type === 'tv' ? '剧集' : '电影' }} · {{ item.file_count || item.files?.length || 0 }} 个文件 · {{ item.library_name }}</VListItemSubtitle>
+              <VListItemSubtitle>
+                {{ item.type === 'tv' ? '剧集' : '电影' }} · {{ item.file_count || item.files?.length || 0 }} 个文件 · {{ item.library_name }}
+                <template v-if="item.processed_count"> · 已处理 {{ item.processed_count }}/{{ item.file_count || item.files?.length || 0 }}</template>
+              </VListItemSubtitle>
               <template #append><VIcon icon="mdi-chevron-right" /></template>
             </VListItem>
           </VList>
@@ -628,6 +647,14 @@ defineExpose({ reload, loadStatus: reload })
       <VCard class="pa-4">
         <VCardTitle>提交处理</VCardTitle>
         <div class="text-medium-emphasis mb-2">将提交 {{ enqueueForm.items?.length || 1 }} 个文件</div>
+        <VAlert
+          v-if="enqueueForm.items?.some(item => item.already_processed)"
+          type="warning"
+          variant="tonal"
+          class="mb-3"
+        >
+          所选文件中包含已成功处理的记录。若要忽略“已有中字”等入队门禁，请显式开启强制入队。
+        </VAlert>
         <VAlert v-if="enqueueHasStrm" type="warning" variant="tonal" class="mb-3">
           勾选里含 STRM：只搜外挂 / 翻译 / 导出，不做 ASR 和调轴。
         </VAlert>

@@ -51,6 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_ss_jobs_plugin_status
     ON plugin_subtitlestudio_jobs (plugin_id, status, priority, queue_rank);
 CREATE INDEX IF NOT EXISTS idx_ss_jobs_title
     ON plugin_subtitlestudio_jobs (plugin_id, title);
+CREATE INDEX IF NOT EXISTS idx_ss_jobs_plugin_path_status
+    ON plugin_subtitlestudio_jobs (plugin_id, path, status);
 """
 
 
@@ -126,6 +128,41 @@ class JobStore:
                 (job_id, self.plugin_id),
             ).fetchone()
         return self._job_from_row(row) if row else None
+
+    def find_success_by_path(self, path: str) -> Optional[Job]:
+        """返回该媒体路径最近一次成功任务，用于自动入队去重。"""
+        if not path:
+            return None
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM plugin_subtitlestudio_jobs
+                WHERE plugin_id=? AND path=? AND status='success'
+                ORDER BY finished_at DESC, created_at DESC LIMIT 1
+                """,
+                (self.plugin_id, path),
+            ).fetchone()
+        return self._job_from_row(row) if row else None
+
+    def successful_paths(self, paths: Iterable[str]) -> set[str]:
+        """批量返回已有成功任务的路径，供媒体页标注已处理状态。"""
+        unique = list(dict.fromkeys(str(path) for path in paths if path))
+        found: set[str] = set()
+        if not unique:
+            return found
+        with self._lock, self._connect() as conn:
+            for offset in range(0, len(unique), 500):
+                batch = unique[offset:offset + 500]
+                placeholders = ",".join("?" for _ in batch)
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT path FROM plugin_subtitlestudio_jobs
+                    WHERE plugin_id=? AND status='success' AND path IN ({placeholders})
+                    """,
+                    [self.plugin_id, *batch],
+                ).fetchall()
+                found.update(str(row[0]) for row in rows if row[0])
+        return found
 
     def delete_job(self, job_id: str) -> None:
         with self._lock, self._connect() as conn:

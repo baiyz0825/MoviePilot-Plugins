@@ -102,6 +102,11 @@ class JobScheduler:
         if config is None:
             getter = getattr(self, "config_getter", None)
             config = getter() if callable(getter) else {}
+        if trigger != "manual" and not force:
+            completed = self.store.find_success_by_path(path)
+            if completed:
+                studio_log(self.logger, "info", "自动入队跳过已有成功任务 job=%s trigger=%s path=%s", completed.job_id, trigger, path)
+                return completed
         ok, reason = evaluate_gates(config or {}, path, payload)
         if not ok and not force:
             studio_log(self.logger, "info", "入队跳过 title=%s trigger=%s reason=%s path=%s", title or path, trigger, reason, path)

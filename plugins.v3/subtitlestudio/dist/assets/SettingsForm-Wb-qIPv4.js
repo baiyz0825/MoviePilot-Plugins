@@ -235,55 +235,59 @@ function exportPreview(config, stem = 'Movie') {
   return files
 }
 
-const {unref:_unref,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,createCommentVNode:_createCommentVNode,createVNode:_createVNode,createElementVNode:_createElementVNode,normalizeStyle:_normalizeStyle,normalizeClass:_normalizeClass} = await importShared('vue');
+const {unref:_unref,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createBlock:_createBlock,createVNode:_createVNode,createCommentVNode:_createCommentVNode,createElementVNode:_createElementVNode,normalizeStyle:_normalizeStyle,normalizeClass:_normalizeClass} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "ss-settings" };
-const _hoisted_2 = { class: "text-medium-emphasis mb-3" };
-const _hoisted_3 = { key: 6 };
-const _hoisted_4 = { class: "text-body-2 mb-2" };
-const _hoisted_5 = { key: 7 };
-const _hoisted_6 = { class: "text-body-2 mb-2" };
-const _hoisted_7 = { key: 9 };
-const _hoisted_8 = { class: "text-body-2 mb-2" };
-const _hoisted_9 = { key: 10 };
-const _hoisted_10 = { class: "text-body-2 mb-2" };
-const _hoisted_11 = { key: 11 };
-const _hoisted_12 = { class: "d-flex align-center mb-2" };
-const _hoisted_13 = { class: "text-body-2" };
-const _hoisted_14 = { class: "d-flex ga-2 mt-2" };
-const _hoisted_15 = { class: "ss-help" };
-const _hoisted_16 = {
+const _hoisted_2 = {
+  key: 0,
+  class: "ss-settings__pane-rail mb-4"
+};
+const _hoisted_3 = { class: "text-medium-emphasis mb-3" };
+const _hoisted_4 = { key: 6 };
+const _hoisted_5 = { class: "text-body-2 mb-2" };
+const _hoisted_6 = { key: 7 };
+const _hoisted_7 = { class: "text-body-2 mb-2" };
+const _hoisted_8 = { key: 9 };
+const _hoisted_9 = { class: "text-body-2 mb-2" };
+const _hoisted_10 = { key: 10 };
+const _hoisted_11 = { class: "text-body-2 mb-2" };
+const _hoisted_12 = { key: 11 };
+const _hoisted_13 = { class: "d-flex align-center mb-2" };
+const _hoisted_14 = { class: "text-body-2" };
+const _hoisted_15 = { class: "d-flex ga-2 mt-2" };
+const _hoisted_16 = { class: "ss-help" };
+const _hoisted_17 = {
   key: 2,
   class: "mt-4"
 };
-const _hoisted_17 = { key: 6 };
-const _hoisted_18 = { class: "text-body-2 mb-2" };
-const _hoisted_19 = { key: 7 };
-const _hoisted_20 = { class: "text-body-2 mb-2" };
-const _hoisted_21 = { key: 9 };
-const _hoisted_22 = { class: "text-body-2 mb-2" };
-const _hoisted_23 = { key: 10 };
-const _hoisted_24 = { class: "text-body-2 mb-2" };
-const _hoisted_25 = { key: 11 };
-const _hoisted_26 = { class: "d-flex align-center mb-2" };
-const _hoisted_27 = { class: "text-body-2" };
-const _hoisted_28 = { class: "d-flex flex-wrap ga-2" };
-const _hoisted_29 = { class: "d-flex ga-2 mt-2" };
-const _hoisted_30 = {
+const _hoisted_18 = { key: 6 };
+const _hoisted_19 = { class: "text-body-2 mb-2" };
+const _hoisted_20 = { key: 7 };
+const _hoisted_21 = { class: "text-body-2 mb-2" };
+const _hoisted_22 = { key: 9 };
+const _hoisted_23 = { class: "text-body-2 mb-2" };
+const _hoisted_24 = { key: 10 };
+const _hoisted_25 = { class: "text-body-2 mb-2" };
+const _hoisted_26 = { key: 11 };
+const _hoisted_27 = { class: "d-flex align-center mb-2" };
+const _hoisted_28 = { class: "text-body-2" };
+const _hoisted_29 = { class: "d-flex flex-wrap ga-2" };
+const _hoisted_30 = { class: "d-flex ga-2 mt-2" };
+const _hoisted_31 = {
   key: 12,
   class: "ss-style-editor"
 };
-const _hoisted_31 = { class: "text-body-2 mb-2" };
-const _hoisted_32 = { class: "d-flex flex-wrap ga-2 mb-3" };
-const _hoisted_33 = { class: "ss-color-field" };
-const _hoisted_34 = ["value"];
-const _hoisted_35 = { class: "ss-color-field" };
-const _hoisted_36 = ["value"];
-const _hoisted_37 = { class: "ss-color-field" };
-const _hoisted_38 = ["value"];
-const _hoisted_39 = { class: "d-flex flex-wrap ga-2" };
-const _hoisted_40 = { class: "ss-help" };
+const _hoisted_32 = { class: "text-body-2 mb-2" };
+const _hoisted_33 = { class: "d-flex flex-wrap ga-2 mb-3" };
+const _hoisted_34 = { class: "ss-color-field" };
+const _hoisted_35 = ["value"];
+const _hoisted_36 = { class: "ss-color-field" };
+const _hoisted_37 = ["value"];
+const _hoisted_38 = { class: "ss-color-field" };
+const _hoisted_39 = ["value"];
+const _hoisted_40 = { class: "d-flex flex-wrap ga-2" };
+const _hoisted_41 = { class: "ss-help" };
 
 const {computed,ref,watch} = await importShared('vue');
 
@@ -576,30 +580,31 @@ return (_ctx, _cache) => {
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     (!__props.mobile)
-      ? (_openBlock(), _createBlock(_component_VBtnToggle, {
-          key: 0,
-          modelValue: pane.value,
-          "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => ((pane).value = $event)),
-          mandatory: "",
-          density: "comfortable",
-          class: "mb-4 flex-wrap"
-        }, {
-          default: _withCtx(() => [
-            (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PANES), (item) => {
-              return (_openBlock(), _createBlock(_component_VBtn, {
-                key: item[0],
-                value: item[0],
-                class: "ss-touch"
-              }, {
-                default: _withCtx(() => [
-                  _createTextVNode(_toDisplayString(item[1]), 1)
-                ]),
-                _: 2
-              }, 1032, ["value"]))
-            }), 128))
-          ]),
-          _: 1
-        }, 8, ["modelValue"]))
+      ? (_openBlock(), _createElementBlock("div", _hoisted_2, [
+          _createVNode(_component_VBtnToggle, {
+            modelValue: pane.value,
+            "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => ((pane).value = $event)),
+            mandatory: "",
+            density: "comfortable",
+            class: "ss-settings__pane-toggle"
+          }, {
+            default: _withCtx(() => [
+              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PANES), (item) => {
+                return (_openBlock(), _createBlock(_component_VBtn, {
+                  key: item[0],
+                  value: item[0],
+                  class: "ss-touch"
+                }, {
+                  default: _withCtx(() => [
+                    _createTextVNode(_toDisplayString(item[1]), 1)
+                  ]),
+                  _: 2
+                }, 1032, ["value"]))
+              }), 128))
+            ]),
+            _: 1
+          }, 8, ["modelValue"])
+        ]))
       : (_openBlock(), _createBlock(_component_VExpansionPanels, {
           key: 1,
           modelValue: pane.value,
@@ -621,7 +626,7 @@ return (_ctx, _cache) => {
                   }, 1024),
                   _createVNode(_component_VExpansionPanelText, null, {
                     default: _withCtx(() => [
-                      _createElementVNode("div", _hoisted_2, _toDisplayString(item[2] || '本组设置'), 1),
+                      _createElementVNode("div", _hoisted_3, _toDisplayString(item[2] || '本组设置'), 1),
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(fieldsForPane(item[0]), (field) => {
                         return (_openBlock(), _createElementBlock("div", {
                           key: `m-${field.key}`,
@@ -679,8 +684,8 @@ return (_ctx, _cache) => {
                                           "onUpdate:modelValue": $event => (setField(field.key, $event))
                                         }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                                       : (field.control === 'multi')
-                                        ? (_openBlock(), _createElementBlock("div", _hoisted_3, [
-                                            _createElementVNode("div", _hoisted_4, _toDisplayString(field.label), 1),
+                                        ? (_openBlock(), _createElementBlock("div", _hoisted_4, [
+                                            _createElementVNode("div", _hoisted_5, _toDisplayString(field.label), 1),
                                             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(field.options, (option) => {
                                               return (_openBlock(), _createBlock(_component_VChip, {
                                                 key: option.value,
@@ -697,8 +702,8 @@ return (_ctx, _cache) => {
                                             }), 128))
                                           ]))
                                         : (field.control === 'order')
-                                          ? (_openBlock(), _createElementBlock("div", _hoisted_5, [
-                                              _createElementVNode("div", _hoisted_6, _toDisplayString(field.label), 1),
+                                          ? (_openBlock(), _createElementBlock("div", _hoisted_6, [
+                                              _createElementVNode("div", _hoisted_7, _toDisplayString(field.label), 1),
                                               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value[field.key] || [], (value, index) => {
                                                 return (_openBlock(), _createElementBlock("div", {
                                                   key: `${field.key}-${value}`,
@@ -752,8 +757,8 @@ return (_ctx, _cache) => {
                                                 "onUpdate:modelValue": $event => (setField(field.key, $event))
                                               }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                                             : (field.control === 'preset')
-                                              ? (_openBlock(), _createElementBlock("div", _hoisted_7, [
-                                                  _createElementVNode("div", _hoisted_8, _toDisplayString(field.label), 1),
+                                              ? (_openBlock(), _createElementBlock("div", _hoisted_8, [
+                                                  _createElementVNode("div", _hoisted_9, _toDisplayString(field.label), 1),
                                                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESETS), (preset) => {
                                                     return (_openBlock(), _createBlock(_component_VCard, {
                                                       key: preset.value,
@@ -781,8 +786,8 @@ return (_ctx, _cache) => {
                                                   }), 128))
                                                 ]))
                                               : (field.control === 'lang-order')
-                                                ? (_openBlock(), _createElementBlock("div", _hoisted_9, [
-                                                    _createElementVNode("div", _hoisted_10, _toDisplayString(field.label), 1),
+                                                ? (_openBlock(), _createElementBlock("div", _hoisted_10, [
+                                                    _createElementVNode("div", _hoisted_11, _toDisplayString(field.label), 1),
                                                     (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value.target_languages || [], (lang, index) => {
                                                       return (_openBlock(), _createElementBlock("div", {
                                                         key: lang,
@@ -816,9 +821,9 @@ return (_ctx, _cache) => {
                                                     }), 128))
                                                   ]))
                                                 : (field.control === 'endpoints')
-                                                  ? (_openBlock(), _createElementBlock("div", _hoisted_11, [
-                                                      _createElementVNode("div", _hoisted_12, [
-                                                        _createElementVNode("div", _hoisted_13, _toDisplayString(field.label), 1),
+                                                  ? (_openBlock(), _createElementBlock("div", _hoisted_12, [
+                                                      _createElementVNode("div", _hoisted_13, [
+                                                        _createElementVNode("div", _hoisted_14, _toDisplayString(field.label), 1),
                                                         _createVNode(_component_VSpacer),
                                                         _createVNode(_component_VBtn, {
                                                           size: "small",
@@ -858,7 +863,13 @@ return (_ctx, _cache) => {
                                                               label: "模型",
                                                               "onUpdate:modelValue": $event => (updateEndpoint(index, { model: $event }))
                                                             }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                                                            _createElementVNode("div", _hoisted_14, [
+                                                            _createVNode(_component_VSwitch, {
+                                                              "model-value": endpoint.local_model,
+                                                              label: "本地模型 / 冷启动（单次请求最多等待 10 分钟）",
+                                                              "hide-details": "",
+                                                              "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
+                                                            }, null, 8, ["model-value", "onUpdate:modelValue"]),
+                                                            _createElementVNode("div", _hoisted_15, [
                                                               _createVNode(_component_VBtn, {
                                                                 size: "small",
                                                                 class: "ss-touch",
@@ -886,7 +897,7 @@ return (_ctx, _cache) => {
                                                       }), 128))
                                                     ]))
                                                   : _createCommentVNode("", true),
-                          _createElementVNode("div", _hoisted_15, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
+                          _createElementVNode("div", _hoisted_16, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
                         ]))
                       }), 128))
                     ]),
@@ -900,7 +911,7 @@ return (_ctx, _cache) => {
           _: 1
         }, 8, ["modelValue"])),
     (!__props.mobile)
-      ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+      ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
           (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(grouped.value, (field) => {
             return (_openBlock(), _createElementBlock("div", {
               key: field.key,
@@ -958,8 +969,8 @@ return (_ctx, _cache) => {
                               "onUpdate:modelValue": $event => (setField(field.key, $event))
                             }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                           : (field.control === 'multi')
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
-                                _createElementVNode("div", _hoisted_18, _toDisplayString(field.label), 1),
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
+                                _createElementVNode("div", _hoisted_19, _toDisplayString(field.label), 1),
                                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(field.options, (option) => {
                                   return (_openBlock(), _createBlock(_component_VChip, {
                                     key: option.value,
@@ -976,8 +987,8 @@ return (_ctx, _cache) => {
                                 }), 128))
                               ]))
                             : (field.control === 'order')
-                              ? (_openBlock(), _createElementBlock("div", _hoisted_19, [
-                                  _createElementVNode("div", _hoisted_20, _toDisplayString(field.label), 1),
+                              ? (_openBlock(), _createElementBlock("div", _hoisted_20, [
+                                  _createElementVNode("div", _hoisted_21, _toDisplayString(field.label), 1),
                                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value[field.key] || [], (value, index) => {
                                     return (_openBlock(), _createElementBlock("div", {
                                       key: `${field.key}-${value}`,
@@ -1031,8 +1042,8 @@ return (_ctx, _cache) => {
                                     "onUpdate:modelValue": $event => (setField(field.key, $event))
                                   }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                                 : (field.control === 'preset')
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_21, [
-                                      _createElementVNode("div", _hoisted_22, _toDisplayString(field.label), 1),
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_22, [
+                                      _createElementVNode("div", _hoisted_23, _toDisplayString(field.label), 1),
                                       _createVNode(_component_VRow, { dense: "" }, {
                                         default: _withCtx(() => [
                                           (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESETS), (item) => {
@@ -1073,8 +1084,8 @@ return (_ctx, _cache) => {
                                       })
                                     ]))
                                   : (field.control === 'lang-order')
-                                    ? (_openBlock(), _createElementBlock("div", _hoisted_23, [
-                                        _createElementVNode("div", _hoisted_24, _toDisplayString(field.label), 1),
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_24, [
+                                        _createElementVNode("div", _hoisted_25, _toDisplayString(field.label), 1),
                                         (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value.target_languages || [], (lang, index) => {
                                           return (_openBlock(), _createElementBlock("div", {
                                             key: lang,
@@ -1120,9 +1131,9 @@ return (_ctx, _cache) => {
                                         }), 128))
                                       ]))
                                     : (field.control === 'endpoints')
-                                      ? (_openBlock(), _createElementBlock("div", _hoisted_25, [
-                                          _createElementVNode("div", _hoisted_26, [
-                                            _createElementVNode("div", _hoisted_27, _toDisplayString(field.label), 1),
+                                      ? (_openBlock(), _createElementBlock("div", _hoisted_26, [
+                                          _createElementVNode("div", _hoisted_27, [
+                                            _createElementVNode("div", _hoisted_28, _toDisplayString(field.label), 1),
                                             _createVNode(_component_VSpacer),
                                             _createVNode(_component_VBtn, {
                                               size: "small",
@@ -1162,7 +1173,7 @@ return (_ctx, _cache) => {
                                                   "onUpdate:modelValue": [$event => ((endpoint.model) = $event), $event => (updateEndpoint(index, { model: $event }))],
                                                   label: "模型"
                                                 }, null, 8, ["modelValue", "onUpdate:modelValue"]),
-                                                _createElementVNode("div", _hoisted_28, [
+                                                _createElementVNode("div", _hoisted_29, [
                                                   _createVNode(_component_VSwitch, {
                                                     "model-value": endpoint.enabled,
                                                     label: "启用",
@@ -1186,9 +1197,15 @@ return (_ctx, _cache) => {
                                                     label: "兼容模式",
                                                     "hide-details": "",
                                                     "onUpdate:modelValue": $event => (updateEndpoint(index, { compatible: $event }))
+                                                  }, null, 8, ["model-value", "onUpdate:modelValue"]),
+                                                  _createVNode(_component_VSwitch, {
+                                                    "model-value": endpoint.local_model,
+                                                    label: "本地模型 / 冷启动（单次请求最多等待 10 分钟）",
+                                                    "hide-details": "",
+                                                    "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
                                                   }, null, 8, ["model-value", "onUpdate:modelValue"])
                                                 ]),
-                                                _createElementVNode("div", _hoisted_29, [
+                                                _createElementVNode("div", _hoisted_30, [
                                                   _createVNode(_component_VBtn, {
                                                     size: "small",
                                                     class: "ss-touch",
@@ -1216,9 +1233,9 @@ return (_ctx, _cache) => {
                                           }), 128))
                                         ]))
                                       : (field.control === 'style-editor')
-                                        ? (_openBlock(), _createElementBlock("div", _hoisted_30, [
-                                            _createElementVNode("div", _hoisted_31, _toDisplayString(field.label), 1),
-                                            _createElementVNode("div", _hoisted_32, [
+                                        ? (_openBlock(), _createElementBlock("div", _hoisted_31, [
+                                            _createElementVNode("div", _hoisted_32, _toDisplayString(field.label), 1),
+                                            _createElementVNode("div", _hoisted_33, [
                                               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(STYLE_LOOKS), (look) => {
                                                 return (_openBlock(), _createBlock(_component_VChip, {
                                                   key: look.title,
@@ -1292,14 +1309,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_33, [
+                                                    _createElementVNode("label", _hoisted_34, [
                                                       _cache[22] || (_cache[22] = _createElementVNode("span", null, "对白颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.primary_color,
                                                         onInput: _cache[4] || (_cache[4] = $event => (setStyle({ primary_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_34)
+                                                      }, null, 40, _hoisted_35)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1309,14 +1326,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_35, [
+                                                    _createElementVNode("label", _hoisted_36, [
                                                       _cache[23] || (_cache[23] = _createElementVNode("span", null, "描边颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.outline_color,
                                                         onInput: _cache[5] || (_cache[5] = $event => (setStyle({ outline_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_36)
+                                                      }, null, 40, _hoisted_37)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1326,14 +1343,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_37, [
+                                                    _createElementVNode("label", _hoisted_38, [
                                                       _cache[24] || (_cache[24] = _createElementVNode("span", null, "顶注颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.note_color,
                                                         onInput: _cache[6] || (_cache[6] = $event => (setStyle({ note_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_38)
+                                                      }, null, 40, _hoisted_39)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1430,7 +1447,7 @@ return (_ctx, _cache) => {
                                               ]),
                                               _: 1
                                             }),
-                                            _createElementVNode("div", _hoisted_39, [
+                                            _createElementVNode("div", _hoisted_40, [
                                               _createVNode(_component_VSwitch, {
                                                 "model-value": assStyle.value.bold,
                                                 label: "粗体",
@@ -1472,7 +1489,7 @@ return (_ctx, _cache) => {
                                               : _createCommentVNode("", true)
                                           ]))
                                         : _createCommentVNode("", true),
-              _createElementVNode("div", _hoisted_40, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
+              _createElementVNode("div", _hoisted_41, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
             ]))
           }), 128))
         ]))

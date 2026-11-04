@@ -61,6 +61,7 @@ class LlmRouter:
             json_body={"model": endpoint.model, "messages": messages, "temperature": 0.2},
             headers={"Authorization": f"Bearer {endpoint.api_key}", "Content-Type": "application/json"},
             use_proxy=endpoint.use_proxy,
+            timeout=600 if endpoint.local_model else 20,
         )
         if isinstance(payload, dict):
             choices = payload.get("choices") or []

@@ -265,9 +265,11 @@ const files = computed(() => exportPreview(config.value))
 
 <template>
   <div class="ss-settings">
-    <VBtnToggle v-if="!mobile" v-model="pane" mandatory density="comfortable" class="mb-4 flex-wrap">
-      <VBtn v-for="item in PANES" :key="item[0]" :value="item[0]" class="ss-touch">{{ item[1] }}</VBtn>
-    </VBtnToggle>
+    <div v-if="!mobile" class="ss-settings__pane-rail mb-4">
+      <VBtnToggle v-model="pane" mandatory density="comfortable" class="ss-settings__pane-toggle">
+        <VBtn v-for="item in PANES" :key="item[0]" :value="item[0]" class="ss-touch">{{ item[1] }}</VBtn>
+      </VBtnToggle>
+    </div>
     <VExpansionPanels v-else v-model="pane" class="mb-2">
       <VExpansionPanel v-for="item in PANES" :key="item[0]" :value="item[0]">
         <VExpansionPanelTitle>{{ item[1] }}</VExpansionPanelTitle>
@@ -391,6 +393,12 @@ const files = computed(() => exportPreview(config.value))
                   <VTextField :model-value="endpoint.api_url" label="API URL" @update:model-value="updateEndpoint(index, { api_url: $event })" />
                   <VTextField :model-value="endpoint.api_key" label="API Key" type="password" @update:model-value="updateEndpoint(index, { api_key: $event })" />
                   <VTextField :model-value="endpoint.model" label="模型" @update:model-value="updateEndpoint(index, { model: $event })" />
+                  <VSwitch
+                    :model-value="endpoint.local_model"
+                    label="本地模型 / 冷启动（单次请求最多等待 10 分钟）"
+                    hide-details
+                    @update:model-value="updateEndpoint(index, { local_model: $event })"
+                  />
                   <div class="d-flex ga-2 mt-2">
                     <VBtn size="small" class="ss-touch" @click="$emit('test-endpoint', endpoint)">测连通</VBtn>
                     <VBtn size="small" class="ss-touch" @click="$emit('list-models', endpoint)">拉模型</VBtn>
@@ -533,6 +541,7 @@ const files = computed(() => exportPreview(config.value))
                 <VSwitch :model-value="endpoint.primary" label="主线路" hide-details @update:model-value="updateEndpoint(index, { primary: $event })" />
                 <VSwitch :model-value="endpoint.use_proxy" label="该线路使用代理" hide-details @update:model-value="updateEndpoint(index, { use_proxy: $event })" />
                 <VSwitch :model-value="endpoint.compatible" label="兼容模式" hide-details @update:model-value="updateEndpoint(index, { compatible: $event })" />
+                <VSwitch :model-value="endpoint.local_model" label="本地模型 / 冷启动（单次请求最多等待 10 分钟）" hide-details @update:model-value="updateEndpoint(index, { local_model: $event })" />
               </div>
               <div class="d-flex ga-2 mt-2">
                 <VBtn size="small" class="ss-touch" @click="$emit('test-endpoint', endpoint)">测连通</VBtn>

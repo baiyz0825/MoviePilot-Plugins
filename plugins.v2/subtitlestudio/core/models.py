@@ -264,6 +264,7 @@ class Endpoint:
     primary: bool = False
     use_proxy: bool = False
     compatible: bool = False
+    local_model: bool = False
 
     def to_dict(self, mask_key: bool = False) -> Dict[str, Any]:
         key = self.api_key
@@ -279,6 +280,7 @@ class Endpoint:
             "primary": self.primary,
             "use_proxy": self.use_proxy,
             "compatible": self.compatible,
+            "local_model": self.local_model,
         }
 
     @classmethod
@@ -293,4 +295,5 @@ class Endpoint:
             primary=bool(data.get("primary") or data.get("is_primary")),
             use_proxy=bool(data.get("use_proxy")),
             compatible=bool(data.get("compatible")),
+            local_model=bool(data.get("local_model")),
         )

@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { o as overlayCss, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-CQDUeaek.js';
+import { o as overlayCss, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-Wb-qIPv4.js';
 import { c as createStudioApi } from './studioApi-HPa9h2pm.js';
 
 const {openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,createElementVNode:_createElementVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,toDisplayString:_toDisplayString$1,normalizeStyle:_normalizeStyle$1,normalizeClass:_normalizeClass} = await importShared('vue');
@@ -123,7 +123,7 @@ return (_ctx, _cache) => {
 
 };
 
-const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,createSlots:_createSlots,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
+const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "plugin-root" };
@@ -147,38 +147,42 @@ const _hoisted_11 = {
   style: {"overflow-x":"auto"}
 };
 const _hoisted_12 = { class: "text-medium-emphasis mb-3" };
-const _hoisted_13 = ["src"];
-const _hoisted_14 = { class: "d-flex ga-2 mb-3" };
-const _hoisted_15 = {
+const _hoisted_13 = {
+  class: "ss-media-poster",
+  "aria-hidden": "true"
+};
+const _hoisted_14 = ["src", "onError"];
+const _hoisted_15 = { class: "d-flex ga-2 mb-3" };
+const _hoisted_16 = {
   class: "d-flex ga-2 mb-3",
   style: {"overflow-x":"auto"}
 };
-const _hoisted_16 = {
+const _hoisted_17 = {
   key: 0,
   class: "mt-1 w-100"
 };
-const _hoisted_17 = { class: "text-caption text-medium-emphasis" };
-const _hoisted_18 = {
+const _hoisted_18 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_19 = {
   key: 1,
   class: "mt-2 pa-2 rounded bg-grey-lighten-4 text-caption"
 };
-const _hoisted_19 = {
+const _hoisted_20 = {
   key: 0,
   class: "text-error"
 };
-const _hoisted_20 = {
+const _hoisted_21 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_21 = { class: "d-flex align-center justify-space-between mb-2 flex-wrap ga-2" };
-const _hoisted_22 = { class: "d-flex ga-2 flex-wrap" };
-const _hoisted_23 = { class: "d-flex ga-2 my-3" };
-const _hoisted_24 = ["aria-label", "onClick"];
-const _hoisted_25 = {
+const _hoisted_22 = { class: "d-flex align-center justify-space-between mb-2 flex-wrap ga-2" };
+const _hoisted_23 = { class: "d-flex ga-2 flex-wrap" };
+const _hoisted_24 = { class: "d-flex ga-2 my-3" };
+const _hoisted_25 = ["aria-label", "onClick"];
+const _hoisted_26 = {
   key: 0,
   class: "ss-savebar pa-3 d-flex ga-2"
 };
-const _hoisted_26 = { class: "text-medium-emphasis mb-2" };
+const _hoisted_27 = { class: "text-medium-emphasis mb-2" };
 
 const {computed,onBeforeUnmount,onMounted,reactive,ref,watch} = await importShared('vue');
 
@@ -207,6 +211,7 @@ const dirty = ref(false);
 const mediaQuery = ref('');
 const mediaType = ref('');
 const mediaGroups = ref([]);
+const failedPosterUrls = ref(new Set());
 const mediaCounts = ref({ files: 0, groups: 0 });
 const mediaDetail = ref(null);
 const selectedPaths = ref({});
@@ -246,6 +251,9 @@ const expandedJob = ref(null);
 function statusLabel(s) { return STATUS_LABELS[s] || s }
 function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
 function trackLabel(t) { return TRACK_LABELS[t] || t }
+function markPosterFailed(url) {
+  failedPosterUrls.value = new Set(failedPosterUrls.value).add(url);
+}
 function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id; }
 function formatMs(ms) {
   const total = Math.max(0, Math.floor(Number(ms) || 0) / 1000);
@@ -399,6 +407,8 @@ async function submitSelected() {
     toast.error?.('先勾选要处理的文件');
     return
   }
+  const completedCount = selectedFiles.value.filter(item => item.already_processed).length;
+  if (completedCount && !(await confirm(`${completedCount} 个文件已有成功处理记录。再次提交会重新执行并消耗模型资源，仍要继续吗？`))) return
   enqueueForm.items = selectedFiles.value;
   enqueueForm.force = false;
   enqueueSheet.value = true;
@@ -712,7 +722,7 @@ return (_ctx, _cache) => {
                             }, 1024),
                             _createVNode(_component_VListItemSubtitle, null, {
                               default: _withCtx(() => [
-                                _createTextVNode(_toDisplayString(item.sidecars?.length || 0) + " 条外挂" + _toDisplayString(item.is_strm ? ' · STRM' : ''), 1)
+                                _createTextVNode(_toDisplayString(item.sidecars?.length || 0) + " 条外挂" + _toDisplayString(item.is_strm ? ' · STRM' : '') + _toDisplayString(item.already_processed ? ' · 已成功处理' : ''), 1)
                               ]),
                               _: 2
                             }, 1024)
@@ -819,7 +829,24 @@ return (_ctx, _cache) => {
                           key: item.id,
                           class: "ss-card mb-2",
                           onClick: $event => (openGroup(item))
-                        }, _createSlots({
+                        }, {
+                          prepend: _withCtx(() => [
+                            _createElementVNode("div", _hoisted_13, [
+                              (item.poster && !failedPosterUrls.value.has(item.poster))
+                                ? (_openBlock(), _createElementBlock("img", {
+                                    key: 0,
+                                    src: item.poster,
+                                    alt: "",
+                                    loading: "lazy",
+                                    decoding: "async",
+                                    onError: $event => (markPosterFailed(item.poster))
+                                  }, null, 40, _hoisted_14))
+                                : (_openBlock(), _createBlock(_component_VIcon, {
+                                    key: 1,
+                                    icon: "mdi-movie-open-outline"
+                                  }))
+                            ])
+                          ]),
                           append: _withCtx(() => [
                             _createVNode(_component_VIcon, { icon: "mdi-chevron-right" })
                           ]),
@@ -832,29 +859,18 @@ return (_ctx, _cache) => {
                             }, 1024),
                             _createVNode(_component_VListItemSubtitle, null, {
                               default: _withCtx(() => [
-                                _createTextVNode(_toDisplayString(item.type === 'tv' ? '剧集' : '电影') + " · " + _toDisplayString(item.file_count || item.files?.length || 0) + " 个文件 · " + _toDisplayString(item.library_name), 1)
+                                _createTextVNode(_toDisplayString(item.type === 'tv' ? '剧集' : '电影') + " · " + _toDisplayString(item.file_count || item.files?.length || 0) + " 个文件 · " + _toDisplayString(item.library_name) + " ", 1),
+                                (item.processed_count)
+                                  ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
+                                      _createTextVNode(" · 已处理 " + _toDisplayString(item.processed_count) + "/" + _toDisplayString(item.file_count || item.files?.length || 0), 1)
+                                    ], 64))
+                                  : _createCommentVNode("", true)
                               ]),
                               _: 2
                             }, 1024)
                           ]),
                           _: 2
-                        }, [
-                          (item.poster)
-                            ? {
-                                name: "prepend",
-                                fn: _withCtx(() => [
-                                  _createElementVNode("img", {
-                                    src: item.poster,
-                                    alt: "",
-                                    width: "40",
-                                    height: "56",
-                                    style: {"object-fit":"cover","border-radius":"4px"}
-                                  }, null, 8, _hoisted_13)
-                                ]),
-                                key: "0"
-                              }
-                            : undefined
-                        ]), 1032, ["onClick"]))
+                        }, 1032, ["onClick"]))
                       }), 128))
                     ]),
                     _: 1
@@ -863,7 +879,7 @@ return (_ctx, _cache) => {
           ], 64))
         : (nav.value === 'jobs')
           ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-              _createElementVNode("div", _hoisted_14, [
+              _createElementVNode("div", _hoisted_15, [
                 _createVNode(_component_VTextField, {
                   modelValue: jobsQuery.value,
                   "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((jobsQuery).value = $event)),
@@ -883,7 +899,7 @@ return (_ctx, _cache) => {
                   _: 1
                 })
               ]),
-              _createElementVNode("div", _hoisted_15, [
+              _createElementVNode("div", _hoisted_16, [
                 (_openBlock(), _createElementBlock(_Fragment, null, _renderList(statusFilters, (item) => {
                   return _createVNode(_component_VChip, {
                     key: item.value,
@@ -980,23 +996,23 @@ return (_ctx, _cache) => {
                           _: 2
                         }, 1024),
                         (job.status === 'running' || job.progress > 0)
-                          ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
                               _createVNode(_component_VProgressLinear, {
                                 "model-value": job.progress,
                                 height: "6",
                                 rounded: "",
                                 color: "primary"
                               }, null, 8, ["model-value"]),
-                              _createElementVNode("div", _hoisted_17, _toDisplayString(job.stage_detail) + " · " + _toDisplayString(job.progress) + "%", 1)
+                              _createElementVNode("div", _hoisted_18, _toDisplayString(job.stage_detail) + " · " + _toDisplayString(job.progress) + "%", 1)
                             ]))
                           : _createCommentVNode("", true),
                         (expandedJob.value === job.job_id)
-                          ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_19, [
                               _createElementVNode("div", null, "阶段：" + _toDisplayString(job.stage_detail || '—'), 1),
                               _createElementVNode("div", null, "进度：" + _toDisplayString(job.progress) + "%", 1),
                               _createElementVNode("div", null, "路径：" + _toDisplayString(job.path), 1),
                               (job.error)
-                                ? (_openBlock(), _createElementBlock("div", _hoisted_19, "错误：" + _toDisplayString(job.error), 1))
+                                ? (_openBlock(), _createElementBlock("div", _hoisted_20, "错误：" + _toDisplayString(job.error), 1))
                                 : _createCommentVNode("", true)
                             ]))
                           : _createCommentVNode("", true)
@@ -1011,11 +1027,11 @@ return (_ctx, _cache) => {
           : (nav.value === 'desk')
             ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
                 (!activeJob.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_20, "从队列打开一个任务。"))
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_21, "从队列打开一个任务。"))
                   : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-                      _createElementVNode("div", _hoisted_21, [
+                      _createElementVNode("div", _hoisted_22, [
                         _createElementVNode("div", null, _toDisplayString(activeJob.value.title), 1),
-                        _createElementVNode("div", _hoisted_22, [
+                        _createElementVNode("div", _hoisted_23, [
                           _createVNode(_component_VBtn, {
                             size: "small",
                             color: "primary",
@@ -1062,7 +1078,7 @@ return (_ctx, _cache) => {
                         enabled: config.value.preview_enabled !== false,
                         onTime: _cache[10] || (_cache[10] = $event => (currentMs.value = $event))
                       }, null, 8, ["graph", "current-ms", "langs", "tracks", "stack", "style-config", "video-url", "enabled"]),
-                      _createElementVNode("div", _hoisted_23, [
+                      _createElementVNode("div", _hoisted_24, [
                         (_openBlock(), _createElementBlock(_Fragment, null, _renderList(['dialogue', 'notes', 'stacked', 'sdh'], (track) => {
                           return _createVNode(_component_VChip, {
                             key: track,
@@ -1089,7 +1105,7 @@ return (_ctx, _cache) => {
                             "aria-label": Object.values(cue.texts || {})[0] || '字幕句',
                             style: _normalizeStyle({ left: cueLeft(cue), width: cueWidth(cue) }),
                             onClick: _withModifiers($event => {openCue(cue); currentMs.value = cue.start_ms;}, ["stop"])
-                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_24))
+                          }, _toDisplayString(Object.values(cue.texts || {})[0]), 13, _hoisted_25))
                         }), 128))
                       ]),
                       (!(graph.value.cues || []).length)
@@ -1145,7 +1161,7 @@ return (_ctx, _cache) => {
                   onListModels: onListModels
                 }, null, 8, ["modelValue", "fields", "mobile"]),
                 (dirty.value)
-                  ? (_openBlock(), _createElementBlock("div", _hoisted_25, [
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_26, [
                       _createVNode(_component_VBtn, {
                         color: "primary",
                         class: "ss-touch",
@@ -1255,8 +1271,8 @@ return (_ctx, _cache) => {
               ]))]),
               _: 1
             }),
-            _createElementVNode("div", _hoisted_26, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
-            (enqueueHasStrm.value)
+            _createElementVNode("div", _hoisted_27, "将提交 " + _toDisplayString(enqueueForm.items?.length || 1) + " 个文件", 1),
+            (enqueueForm.items?.some(item => item.already_processed))
               ? (_openBlock(), _createBlock(_component_VAlert, {
                   key: 0,
                   type: "warning",
@@ -1264,6 +1280,19 @@ return (_ctx, _cache) => {
                   class: "mb-3"
                 }, {
                   default: _withCtx(() => [...(_cache[53] || (_cache[53] = [
+                    _createTextVNode(" 所选文件中包含已成功处理的记录。若要忽略“已有中字”等入队门禁，请显式开启强制入队。 ", -1)
+                  ]))]),
+                  _: 1
+                }))
+              : _createCommentVNode("", true),
+            (enqueueHasStrm.value)
+              ? (_openBlock(), _createBlock(_component_VAlert, {
+                  key: 1,
+                  type: "warning",
+                  variant: "tonal",
+                  class: "mb-3"
+                }, {
+                  default: _withCtx(() => [...(_cache[54] || (_cache[54] = [
                     _createTextVNode(" 勾选里含 STRM：只搜外挂 / 翻译 / 导出，不做 ASR 和调轴。 ", -1)
                   ]))]),
                   _: 1
@@ -1295,7 +1324,7 @@ return (_ctx, _cache) => {
               loading: submitting.value,
               onClick: confirmEnqueue
             }, {
-              default: _withCtx(() => [...(_cache[54] || (_cache[54] = [
+              default: _withCtx(() => [...(_cache[55] || (_cache[55] = [
                 _createTextVNode("确认提交", -1)
               ]))]),
               _: 1
@@ -1320,7 +1349,7 @@ return (_ctx, _cache) => {
             }, {
               default: _withCtx(() => [
                 _createVNode(_component_VCardTitle, null, {
-                  default: _withCtx(() => [...(_cache[55] || (_cache[55] = [
+                  default: _withCtx(() => [...(_cache[56] || (_cache[56] = [
                     _createTextVNode("编辑句子", -1)
                   ]))]),
                   _: 1
@@ -1353,7 +1382,7 @@ return (_ctx, _cache) => {
                   class: "ss-touch",
                   onClick: saveCue
                 }, {
-                  default: _withCtx(() => [...(_cache[56] || (_cache[56] = [
+                  default: _withCtx(() => [...(_cache[57] || (_cache[57] = [
                     _createTextVNode("保存到 CueGraph", -1)
                   ]))]),
                   _: 1
@@ -1374,7 +1403,7 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, null, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, null, {
-              default: _withCtx(() => [...(_cache[57] || (_cache[57] = [
+              default: _withCtx(() => [...(_cache[58] || (_cache[58] = [
                 _createTextVNode("选择模型", -1)
               ]))]),
               _: 1

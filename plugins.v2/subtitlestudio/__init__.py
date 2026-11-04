@@ -52,7 +52,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     # 主题色
     plugin_color = "#0EA5E9"
     # 插件版本：V2 必须是 1.x，禁止和 V3 共用版本号，避免 Release Tag 碰撞
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # 插件作者
     plugin_author = "baiyz0825"
     # 作者主页
@@ -236,7 +236,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         for path in files:
             if Path(path).suffix.lower() not in set(media_extensions()) | {".strm"} and not is_video_path(path):
                 continue
-            self.services.scheduler.enqueue(
+            job = self.services.scheduler.enqueue(
                 title=title or Path(path).stem,
                 path=path,
                 identity=identity or identity_from_v2_ids(),
@@ -245,7 +245,8 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
                 strategy=self._config.get("transfer_strategy") or "search_then_translate",
                 config=self._config,
             )
-            enqueued += 1
+            if job.status in {"pending", "running"}:
+                enqueued += 1
         if enqueued:
             # 事件里只入队，搜站放到 3 秒防抖，避免整理风暴打满字幕站。
             self.host_logger.info("[SubtitleStudio] 整理完成已入队 %s 条，3 秒后启动队列", enqueued)

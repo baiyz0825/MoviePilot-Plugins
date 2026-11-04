@@ -52,7 +52,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     plugin_icon = "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
     plugin_color = "#0EA5E9"
     # V3 必须是 2.x，禁止和 V2 共用版本号
-    plugin_version = "2.0.4"
+    plugin_version = "2.0.5"
     plugin_author = "baiyz0825"
     author_url = "https://github.com/baiyz0825"
     plugin_config_prefix = CONFIG_PREFIX
@@ -246,7 +246,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
         for path in files:
             if Path(path).suffix.lower() not in set(media_extensions()) | {".strm"} and not is_video_path(path):
                 continue
-            self.services.scheduler.enqueue(
+            job = self.services.scheduler.enqueue(
                 title=title or Path(path).stem,
                 path=path,
                 identity=identity or identity_from_v3_pair("", ""),
@@ -255,7 +255,8 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
                 strategy=self._config.get("transfer_strategy") or "search_then_translate",
                 config=self._config,
             )
-            enqueued += 1
+            if job.status in {"pending", "running"}:
+                enqueued += 1
         if enqueued:
             self.host_logger.info("[SubtitleStudio] 整理完成已入队 %s 条，3 秒后启动队列", enqueued)
             schedule_once(self.kick_queue, delay_seconds=3, plugin_id=self.__class__.__name__)

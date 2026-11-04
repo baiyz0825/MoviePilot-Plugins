@@ -154,6 +154,15 @@ class StudioApiMixin:
     def api_list_media(self, q: str = "", media_type: str = "", force: bool = False) -> Dict[str, Any]:
         items = self.services.catalog.list_media(q=q, media_type=media_type, force=force)
         groups = group_media_items(items)
+        successful_paths = self.services.store.successful_paths(
+            file.get("path") for group in groups for file in group.get("files") or []
+        )
+        for group in groups:
+            for file in group.get("files") or []:
+                file["already_processed"] = file.get("path") in successful_paths
+            group["processed_count"] = sum(
+                bool(file.get("already_processed")) for file in group.get("files") or []
+            )
         return ok({
             "groups": groups,
             "counts": {"files": len(items), "groups": len(groups)},
@@ -302,7 +311,12 @@ class StudioApiMixin:
         compatible = bool(data.get("compatible"))
         probe = url if compatible else f"{url}/v1/models"
         try:
-            payload = self.services.http("GET", probe, headers=_auth_header(data.get("api_key")), use_proxy=bool(data.get("use_proxy")))
+            payload = self.services.http(
+                "GET", probe,
+                headers=_auth_header(data.get("api_key")),
+                use_proxy=bool(data.get("use_proxy")),
+                timeout=600 if data.get("local_model") else 20,
+            )
         except Exception as exc:  # noqa: BLE001
             return fail(user_message(exc, fallback="连通失败"))
         return ok({"ok": True, "payload": _safe_payload(payload)}, "连通")
@@ -315,7 +329,12 @@ class StudioApiMixin:
         compatible = bool(data.get("compatible"))
         probe = url if compatible else f"{url}/v1/models"
         try:
-            payload = self.services.http("GET", probe, headers=_auth_header(data.get("api_key")), use_proxy=bool(data.get("use_proxy")))
+            payload = self.services.http(
+                "GET", probe,
+                headers=_auth_header(data.get("api_key")),
+                use_proxy=bool(data.get("use_proxy")),
+                timeout=600 if data.get("local_model") else 20,
+            )
         except Exception as exc:  # noqa: BLE001
             return fail(user_message(exc, fallback="拉取模型失败"))
         models = []
