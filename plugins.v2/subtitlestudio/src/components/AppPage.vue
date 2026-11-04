@@ -74,8 +74,14 @@ function trackLabel(t) { return TRACK_LABELS[t] || t }
 function markPosterFailed(url) {
   failedPosterUrls.value = new Set(failedPosterUrls.value).add(url)
 }
-function isDoubanPoster(url) {
-  return typeof url === 'string' && url.includes('doubanio.com')
+function isProxyPoster(url) {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host === 'doubanio.com' || host.endsWith('.doubanio.com') || host === 'tmdb.org' || host.endsWith('.tmdb.org')
+  } catch {
+    return false
+  }
 }
 async function loadPoster(url) {
   if (!url || posterObjectUrls.value[url] || loadingPosterUrls.value.has(url) || failedPosterUrls.value.has(url)) return
@@ -100,7 +106,7 @@ async function loadPoster(url) {
 const vPoster = {
   mounted(el, binding) {
     const url = binding.value
-    if (!isDoubanPoster(url)) return
+    if (!isProxyPoster(url)) return
     posterObserver ||= new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (!entry.isIntersecting) return
@@ -553,7 +559,7 @@ defineExpose({ reload, loadStatus: reload })
                   <img
                     v-if="item.poster && !failedPosterUrls.has(item.poster)"
                     v-poster="item.poster"
-                    :src="isDoubanPoster(item.poster) ? posterObjectUrls[item.poster] : item.poster"
+                    :src="isProxyPoster(item.poster) ? posterObjectUrls[item.poster] : item.poster"
                     alt=""
                     loading="lazy"
                     decoding="async"
