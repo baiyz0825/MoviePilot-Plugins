@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { u as useHostInjects, a as useMobileViewport, _ as _sfc_main$1 } from './SettingsForm-Wb-qIPv4.js';
+import { u as useHostInjects, a as useMobileViewport, _ as _sfc_main$1 } from './SettingsForm-BVgEMPvf.js';
 import { c as createStudioApi } from './studioApi-HPa9h2pm.js';
 
 const {unref:_unref,createVNode:_createVNode,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withCtx:_withCtx,createElementVNode:_createElementVNode,renderList:_renderList,Fragment:_Fragment,openBlock:_openBlock,createElementBlock:_createElementBlock,createBlock:_createBlock} = await importShared('vue');

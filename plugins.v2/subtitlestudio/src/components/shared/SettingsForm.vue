@@ -265,11 +265,11 @@ const files = computed(() => exportPreview(config.value))
 
 <template>
   <div class="ss-settings">
-    <div v-if="!mobile" class="ss-settings__pane-rail mb-4">
-      <VBtnToggle v-model="pane" mandatory density="comfortable" class="ss-settings__pane-toggle">
-        <VBtn v-for="item in PANES" :key="item[0]" :value="item[0]" class="ss-touch">{{ item[1] }}</VBtn>
-      </VBtnToggle>
-    </div>
+    <VSlideGroup v-if="!mobile" v-model="pane" mandatory show-arrows class="ss-settings__pane-group mb-4">
+      <VSlideGroupItem v-for="item in PANES" :key="item[0]" :value="item[0]" v-slot="{ isSelected, toggle }">
+        <VBtn :active="isSelected" :variant="isSelected ? 'flat' : 'text'" class="ss-touch" @click="toggle">{{ item[1] }}</VBtn>
+      </VSlideGroupItem>
+    </VSlideGroup>
     <VExpansionPanels v-else v-model="pane" class="mb-2">
       <VExpansionPanel v-for="item in PANES" :key="item[0]" :value="item[0]">
         <VExpansionPanelTitle>{{ item[1] }}</VExpansionPanelTitle>

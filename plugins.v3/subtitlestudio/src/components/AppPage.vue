@@ -29,6 +29,9 @@ const mediaQuery = ref('')
 const mediaType = ref('')
 const mediaGroups = ref([])
 const failedPosterUrls = ref(new Set())
+const posterObjectUrls = ref({})
+const loadingPosterUrls = ref(new Set())
+let posterObserver
 const mediaCounts = ref({ files: 0, groups: 0 })
 const mediaDetail = ref(null)
 const selectedPaths = ref({})
@@ -70,6 +73,48 @@ function triggerLabel(t) { return TRIGGER_LABELS[t] || t }
 function trackLabel(t) { return TRACK_LABELS[t] || t }
 function markPosterFailed(url) {
   failedPosterUrls.value = new Set(failedPosterUrls.value).add(url)
+}
+function isDoubanPoster(url) {
+  return typeof url === 'string' && url.includes('doubanio.com')
+}
+async function loadPoster(url) {
+  if (!url || posterObjectUrls.value[url] || loadingPosterUrls.value.has(url) || failedPosterUrls.value.has(url)) return
+  loadingPosterUrls.value = new Set(loadingPosterUrls.value).add(url)
+  try {
+    const response = await props.api.get('system/img/0', {
+      params: { imgurl: url },
+      responseType: 'blob',
+      feedback: 'silent',
+    })
+    const blob = response instanceof Blob ? response : response?.data
+    if (!(blob instanceof Blob) || !blob.size) throw new Error('图片代理未返回图片')
+    posterObjectUrls.value = { ...posterObjectUrls.value, [url]: URL.createObjectURL(blob) }
+  } catch {
+    markPosterFailed(url)
+  } finally {
+    const next = new Set(loadingPosterUrls.value)
+    next.delete(url)
+    loadingPosterUrls.value = next
+  }
+}
+const vPoster = {
+  mounted(el, binding) {
+    const url = binding.value
+    if (!isDoubanPoster(url)) return
+    posterObserver ||= new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return
+        const imageUrl = entry.target.dataset.posterUrl
+        posterObserver.unobserve(entry.target)
+        loadPoster(imageUrl)
+      })
+    }, { rootMargin: '120px' })
+    el.dataset.posterUrl = url
+    posterObserver.observe(el)
+  },
+  unmounted(el) {
+    posterObserver?.unobserve(el)
+  },
 }
 function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id }
 function formatMs(ms) {
@@ -434,6 +479,8 @@ onMounted(reload)
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
   revokePreview()
+  posterObserver?.disconnect()
+  Object.values(posterObjectUrls.value).forEach(url => URL.revokeObjectURL(url))
 })
 defineExpose({ reload, loadStatus: reload })
 </script>
@@ -505,7 +552,8 @@ defineExpose({ reload, loadStatus: reload })
                 <div class="ss-media-poster" aria-hidden="true">
                   <img
                     v-if="item.poster && !failedPosterUrls.has(item.poster)"
-                    :src="item.poster"
+                    v-poster="item.poster"
+                    :src="isDoubanPoster(item.poster) ? posterObjectUrls[item.poster] : item.poster"
                     alt=""
                     loading="lazy"
                     decoding="async"

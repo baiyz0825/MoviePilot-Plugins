@@ -2,14 +2,14 @@ const currentImports = {};
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {
 "./Page":()=>{
-      dynamicLoadingCss(["SettingsForm-45cdmC49.css"], false, './Page');
-      return __federation_import('./__federation_expose_Page-ILdUEm5b.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["SettingsForm-Kk1o857q.css"], false, './Page');
+      return __federation_import('./__federation_expose_Page-DEobapZS.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Config":()=>{
-      dynamicLoadingCss(["SettingsForm-45cdmC49.css"], false, './Config');
-      return __federation_import('./__federation_expose_Config-Fjr7yDw2.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["SettingsForm-Kk1o857q.css"], false, './Config');
+      return __federation_import('./__federation_expose_Config-cgBVvuQb.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./AppPage":()=>{
-      dynamicLoadingCss(["SettingsForm-45cdmC49.css"], false, './AppPage');
-      return __federation_import('./__federation_expose_AppPage-BjxiivXW.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["SettingsForm-Kk1o857q.css"], false, './AppPage');
+      return __federation_import('./__federation_expose_AppPage-mWHl3KWl.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Dashboard":()=>{
       dynamicLoadingCss([], false, './Dashboard');
       return __federation_import('./__federation_expose_Dashboard-BUNrf_0E.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};

@@ -50,23 +50,8 @@
   object-fit: cover;
 }
 
-.plugin-root .ss-settings__pane-rail {
+.plugin-root .ss-settings__pane-group {
   max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-}
-
-.plugin-root .ss-settings__pane-toggle {
-  display: flex;
-  flex-wrap: nowrap;
-  width: max-content;
-  min-width: 100%;
-}
-
-.plugin-root .ss-settings__pane-toggle > .v-btn {
-  flex: 0 0 auto;
-  white-space: nowrap;
 }
 
 .plugin-root .ss-timeline {

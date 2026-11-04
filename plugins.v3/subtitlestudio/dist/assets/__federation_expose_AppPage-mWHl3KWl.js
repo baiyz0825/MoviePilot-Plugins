@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { o as overlayCss, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-Wb-qIPv4.js';
+import { o as overlayCss, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-BVgEMPvf.js';
 import { c as createStudioApi } from './studioApi-HPa9h2pm.js';
 
 const {openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,createElementVNode:_createElementVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,toDisplayString:_toDisplayString$1,normalizeStyle:_normalizeStyle$1,normalizeClass:_normalizeClass} = await importShared('vue');
@@ -123,7 +123,7 @@ return (_ctx, _cache) => {
 
 };
 
-const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
+const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,createElementVNode:_createElementVNode,createBlock:_createBlock,withKeys:_withKeys,withDirectives:_withDirectives,unref:_unref,withModifiers:_withModifiers,normalizeStyle:_normalizeStyle} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "plugin-root" };
@@ -212,6 +212,9 @@ const mediaQuery = ref('');
 const mediaType = ref('');
 const mediaGroups = ref([]);
 const failedPosterUrls = ref(new Set());
+const posterObjectUrls = ref({});
+const loadingPosterUrls = ref(new Set());
+let posterObserver;
 const mediaCounts = ref({ files: 0, groups: 0 });
 const mediaDetail = ref(null);
 const selectedPaths = ref({});
@@ -254,6 +257,48 @@ function trackLabel(t) { return TRACK_LABELS[t] || t }
 function markPosterFailed(url) {
   failedPosterUrls.value = new Set(failedPosterUrls.value).add(url);
 }
+function isDoubanPoster(url) {
+  return typeof url === 'string' && url.includes('doubanio.com')
+}
+async function loadPoster(url) {
+  if (!url || posterObjectUrls.value[url] || loadingPosterUrls.value.has(url) || failedPosterUrls.value.has(url)) return
+  loadingPosterUrls.value = new Set(loadingPosterUrls.value).add(url);
+  try {
+    const response = await props.api.get('system/img/0', {
+      params: { imgurl: url },
+      responseType: 'blob',
+      feedback: 'silent',
+    });
+    const blob = response instanceof Blob ? response : response?.data;
+    if (!(blob instanceof Blob) || !blob.size) throw new Error('图片代理未返回图片')
+    posterObjectUrls.value = { ...posterObjectUrls.value, [url]: URL.createObjectURL(blob) };
+  } catch {
+    markPosterFailed(url);
+  } finally {
+    const next = new Set(loadingPosterUrls.value);
+    next.delete(url);
+    loadingPosterUrls.value = next;
+  }
+}
+const vPoster = {
+  mounted(el, binding) {
+    const url = binding.value;
+    if (!isDoubanPoster(url)) return
+    posterObserver ||= new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return
+        const imageUrl = entry.target.dataset.posterUrl;
+        posterObserver.unobserve(entry.target);
+        loadPoster(imageUrl);
+      });
+    }, { rootMargin: '120px' });
+    el.dataset.posterUrl = url;
+    posterObserver.observe(el);
+  },
+  unmounted(el) {
+    posterObserver?.unobserve(el);
+  },
+};
 function toggleJobDetail(job) { expandedJob.value = expandedJob.value === job.job_id ? null : job.job_id; }
 function formatMs(ms) {
   const total = Math.max(0, Math.floor(Number(ms) || 0) / 1000);
@@ -605,6 +650,8 @@ onMounted(reload);
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
   revokePreview();
+  posterObserver?.disconnect();
+  Object.values(posterObjectUrls.value).forEach(url => URL.revokeObjectURL(url));
 });
 __expose({ reload, loadStatus: reload });
 
@@ -833,14 +880,16 @@ return (_ctx, _cache) => {
                           prepend: _withCtx(() => [
                             _createElementVNode("div", _hoisted_13, [
                               (item.poster && !failedPosterUrls.value.has(item.poster))
-                                ? (_openBlock(), _createElementBlock("img", {
+                                ? _withDirectives((_openBlock(), _createElementBlock("img", {
                                     key: 0,
-                                    src: item.poster,
+                                    src: isDoubanPoster(item.poster) ? posterObjectUrls.value[item.poster] : item.poster,
                                     alt: "",
                                     loading: "lazy",
                                     decoding: "async",
                                     onError: $event => (markPosterFailed(item.poster))
-                                  }, null, 40, _hoisted_14))
+                                  }, null, 40, _hoisted_14)), [
+                                    [vPoster, item.poster]
+                                  ])
                                 : (_openBlock(), _createBlock(_component_VIcon, {
                                     key: 1,
                                     icon: "mdi-movie-open-outline"
