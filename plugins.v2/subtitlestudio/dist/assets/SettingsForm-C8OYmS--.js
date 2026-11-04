@@ -1202,14 +1202,16 @@ return (_ctx, _cache) => {
                                                     label: "兼容模式",
                                                     "hide-details": "",
                                                     "onUpdate:modelValue": $event => (updateEndpoint(index, { compatible: $event }))
-                                                  }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                                                  _createVNode(_component_VSwitch, {
-                                                    "model-value": endpoint.local_model,
-                                                    label: "本地模型 / 冷启动（单次请求最多等待 10 分钟）",
-                                                    "hide-details": "",
-                                                    "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
                                                   }, null, 8, ["model-value", "onUpdate:modelValue"])
                                                 ]),
+                                                _createVNode(_component_VSwitch, {
+                                                  "model-value": endpoint.local_model,
+                                                  label: "本地模型 / 冷启动（单次请求最多等待 10 分钟）",
+                                                  hint: "适用于本机部署或可能需要加载模型的线路。",
+                                                  "persistent-hint": "",
+                                                  color: "primary",
+                                                  "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
+                                                }, null, 8, ["model-value", "onUpdate:modelValue"]),
                                                 _createElementVNode("div", _hoisted_29, [
                                                   _createVNode(_component_VBtn, {
                                                     size: "small",

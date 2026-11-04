@@ -541,8 +541,15 @@ const files = computed(() => exportPreview(config.value))
                 <VSwitch :model-value="endpoint.primary" label="主线路" hide-details @update:model-value="updateEndpoint(index, { primary: $event })" />
                 <VSwitch :model-value="endpoint.use_proxy" label="该线路使用代理" hide-details @update:model-value="updateEndpoint(index, { use_proxy: $event })" />
                 <VSwitch :model-value="endpoint.compatible" label="兼容模式" hide-details @update:model-value="updateEndpoint(index, { compatible: $event })" />
-                <VSwitch :model-value="endpoint.local_model" label="本地模型 / 冷启动（单次请求最多等待 10 分钟）" hide-details @update:model-value="updateEndpoint(index, { local_model: $event })" />
               </div>
+              <VSwitch
+                :model-value="endpoint.local_model"
+                label="本地模型 / 冷启动（单次请求最多等待 10 分钟）"
+                hint="适用于本机部署或可能需要加载模型的线路。"
+                persistent-hint
+                color="primary"
+                @update:model-value="updateEndpoint(index, { local_model: $event })"
+              />
               <div class="d-flex ga-2 mt-2">
                 <VBtn size="small" class="ss-touch" @click="$emit('test-endpoint', endpoint)">测连通</VBtn>
                 <VBtn size="small" class="ss-touch" @click="$emit('list-models', endpoint)">拉模型</VBtn>

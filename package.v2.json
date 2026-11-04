@@ -3,7 +3,7 @@
         "name": "字幕工坊",
         "description": "独立完成字幕搜索、识别、免费/大模型翻译、特效顶注、导出包和工作台预览，不委托其它字幕插件。",
         "labels": "字幕,翻译,ASR,工作台",
-        "version": "1.0.7",
+        "version": "1.0.8",
         "icon": "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg",
         "author": "baiyz0825",
         "author_url": "https://github.com/baiyz0825",
@@ -13,6 +13,7 @@
         "v3": false,
         "release": true,
         "history": {
+            "v1.0.8": "单独展示本地模型长超时开关",
             "v1.0.7": "豆瓣和 TMDB 海报经 MoviePilot 图片代理加载",
             "v1.0.6": "设置分类栏横向滚动；豆瓣海报经 MoviePilot 图片代理加载",
             "v1.0.5": "设置分类栏单行滚动和海报失败占位；本地 LLM 冷启动请求延长等待；自动跳过已成功处理文件，手动重跑前提示",
