@@ -8,7 +8,9 @@ TransferHistory.list_by_page（GET /api/v1/history/transfer 同源）。
 from __future__ import annotations
 
 import json
+import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from .identity import identity_from_v2_ids, identity_from_v3_pair
@@ -16,6 +18,7 @@ from .identity import identity_from_v2_ids, identity_from_v3_pair
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".ts", ".m2ts", ".mov", ".wmv", ".m4v", ".flv", ".webm", ".strm"}
 
 NUMBER = re.compile(r"(\d+)")
+EPISODE_MARKER = re.compile(r"(?i)s(\d{1,2})[ ._-]*e(\d{1,3})")
 
 
 def media_type_of(value: Any) -> str:
@@ -43,6 +46,7 @@ def history_object_to_dict(item: Any) -> Dict[str, Any]:
         "title": getattr(item, "title", None) or "",
         "year": getattr(item, "year", None) or "",
         "path": getattr(item, "dest", None) or getattr(item, "dest_file", None) or getattr(item, "src", None) or "",
+        "src": getattr(item, "src", None) or getattr(item, "source", None) or "",
         "dest": getattr(item, "dest", None) or "",
         "dest_fileitem": getattr(item, "dest_fileitem", None),
         "dest_storage": getattr(item, "dest_storage", None) or "",
@@ -58,6 +62,95 @@ def history_object_to_dict(item: Any) -> Dict[str, Any]:
         "date": getattr(item, "date", None) or "",
         "status": getattr(item, "status", True),
     }
+
+
+def _norm_path(value: str) -> str:
+    return os.path.normcase(os.path.normpath(str(value or "").replace("\\", "/")))
+
+
+def _is_under(path: str, roots: Iterable[str]) -> bool:
+    candidate = _norm_path(path)
+    for root in roots:
+        base = _norm_path(root).rstrip("/")
+        if base and (candidate == base or candidate.startswith(base + "/")):
+            return True
+    return False
+
+
+def _episode_marker(path: str) -> tuple[int, int] | None:
+    match = EPISODE_MARKER.search(str(path or ""))
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def resolve_library_path(job: Any, history_rows: Iterable[Any], library_roots: Iterable[str]) -> str:
+    """Resolve an ingest/download path to its organized library destination.
+
+    A path already present in transfer history or under a configured library root is
+    final. Otherwise require an exact source-path or media-identity match in history.
+    """
+    source = str(getattr(job, "path", "") or "")
+    if not source:
+        return ""
+    rows = [history_object_to_dict(row) for row in history_rows or []]
+    known_destinations = set()
+    for row in rows:
+        source_paths = {
+            _norm_path(row.get(key))
+            for key in ("src", "source", "src_path", "source_path")
+            if row.get(key)
+        }
+        explicit_dest = any(row.get(key) for key in ("dest", "dest_file", "dest_fileitem", "files"))
+        for path in paths_from_history(row):
+            if is_media_file(path) and (explicit_dest or _norm_path(path) not in source_paths):
+                known_destinations.add(_norm_path(path))
+    if _norm_path(source) in known_destinations:
+        return source
+
+    job_pair = identity_from_v3_pair(
+        getattr(job, "media_source", ""), getattr(job, "media_id", ""),
+        getattr(job, "tmdbid", ""), getattr(job, "doubanid", ""),
+    )
+    source_marker = _episode_marker(source)
+    source_norm = _norm_path(source)
+    for row in rows:
+        sources = [row.get(key) for key in ("src", "source", "src_path", "source_path")]
+        exact_source = source_norm in {_norm_path(value) for value in sources if value}
+        row_pair = identity_from_history(row)
+        same_pair = bool(
+            job_pair.get("media_source") and job_pair.get("media_id")
+            and row_pair.get("media_source") == job_pair.get("media_source")
+            and row_pair.get("media_id") == job_pair.get("media_id")
+        )
+        same_legacy_id = bool(
+            (job_pair.get("tmdbid") and row_pair.get("tmdbid") == job_pair.get("tmdbid"))
+            or (job_pair.get("doubanid") and row_pair.get("doubanid") == job_pair.get("doubanid"))
+        )
+        if not (exact_source or same_pair or same_legacy_id):
+            continue
+        season = first_number(row.get("season") or row.get("seasons"))
+        episode = first_number(row.get("episode") or row.get("episodes"))
+        if source_marker and season and episode and source_marker != (season, episode):
+            continue
+        source_paths = {
+            _norm_path(row.get(key))
+            for key in ("src", "source", "src_path", "source_path")
+            if row.get(key)
+        }
+        explicit_dest = any(row.get(key) for key in ("dest", "dest_file", "dest_fileitem", "files"))
+        for candidate in paths_from_history(row):
+            if not is_media_file(candidate) or _norm_path(candidate) == source_norm:
+                continue
+            if not explicit_dest and _norm_path(candidate) in source_paths:
+                continue
+            if not Path(candidate).is_file():
+                continue
+            candidate_marker = _episode_marker(candidate)
+            if source_marker and candidate_marker and source_marker != candidate_marker:
+                continue
+            if source_marker and not candidate_marker and season and episode and source_marker != (season, episode):
+                continue
+            return candidate
+    return source if _is_under(source, library_roots) else ""
 
 
 def _as_dict(value: Any) -> Dict[str, Any]:

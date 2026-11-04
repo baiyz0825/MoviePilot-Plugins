@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .cuegraph import parse_subtitle
+from .language import canonical_language
 from .logging import studio_log
 from .models import CueGraph
 
@@ -74,10 +75,10 @@ def extract_stream(path: str, stream_index: int, logger: Any = None) -> Optional
 
 
 def _is_target_lang(language: str, target_prefixes: set) -> bool:
-    lang = (language or "").lower()
-    if not lang:
+    lang = canonical_language(language)
+    if not language:
         return False
-    return any(lang.startswith(prefix) for prefix in target_prefixes)
+    return lang in target_prefixes
 
 
 def extract_best_embedded(job: Any, config: Dict[str, Any], logger: Any = None) -> Optional[CueGraph]:
@@ -95,11 +96,13 @@ def extract_best_embedded(job: Any, config: Dict[str, Any], logger: Any = None) 
     if not streams:
         return None
     target_langs = [str(item) for item in (config.get("target_languages") or ["zh-Hans"])]
-    target_prefixes = {lang[:2].lower() for lang in target_langs} | {lang.lower() for lang in target_langs}
+    target_prefixes = {canonical_language(lang) for lang in target_langs}
     candidates = [s for s in streams if not _is_target_lang(s["language"], target_prefixes)]
     if not candidates:
-        studio_log(logger, "info", "内嵌字幕都是目标语言，无需提取翻译 path=%s", path)
-        return None
+        # A selected target can also be the source track (e.g. English source with
+        # Chinese+English outputs). Reuse it, then translate only missing targets.
+        candidates = streams
+        studio_log(logger, "info", "内嵌字幕均属于目标语种，仍提取优先源轨复用原文 path=%s", path)
     pref = str(config.get("source_preference") or "english_first")
     if pref == "english_only":
         picked = next((s for s in candidates if "en" in s["language"].lower()), None)

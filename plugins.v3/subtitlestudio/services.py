@@ -45,6 +45,8 @@ class StudioServices:
             ),
             http=self.http,
             llm=self.llm.complete,
+            history_loader=plugin.host_history,
+            library_roots=plugin.host_library_roots(),
             logger=plugin.host_logger,
             notify=plugin.notify_job,
         )

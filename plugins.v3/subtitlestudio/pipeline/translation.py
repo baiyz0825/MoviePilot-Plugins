@@ -10,6 +10,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ..core.format_repair import repair_model_batch
+from ..core.language import canonical_language, infer_source_language
 from ..core.logging import studio_log
 from ..core.models import CueGraph, Issue
 from .mt_engines import FreeMtRouter
@@ -61,7 +62,24 @@ class TranslationService:
     def translate_graph(self, graph: CueGraph, target_langs: Sequence[str]) -> CueGraph:
         if not self.config.get("translate_enabled", True):
             return graph
-        targets = [item for item in target_langs if item and item != graph.source_lang] or ["zh-Hans"]
+        graph.source_lang = infer_source_language(
+            graph.source_lang,
+            (cue.text(graph.source_lang) or cue.text() for cue in graph.sorted_cues()),
+        )
+        targets = []
+        for item in target_langs:
+            lang = canonical_language(item)
+            if lang and lang != graph.source_lang and lang not in targets:
+                targets.append(lang)
+        # Source text already satisfies a target language; expose it under the
+        # canonical target key so stacked/split exports can reuse it verbatim.
+        for cue in graph.sorted_cues():
+            source_text = cue.text(graph.source_lang) or cue.text()
+            if source_text and graph.source_lang in {canonical_language(item) for item in target_langs}:
+                cue.texts.setdefault(graph.source_lang, source_text)
+        if not targets:
+            studio_log(self.logger, "info", "源语种 %s 已包含在目标语种中，跳过翻译", graph.source_lang)
+            return graph
         for lang in targets:
             self._translate_lang(graph, lang)
         return graph

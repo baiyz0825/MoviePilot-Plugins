@@ -15,6 +15,8 @@ from ..core.embedded import extract_best_embedded
 from ..core.errors import JobCancelled
 from ..core.web_research import web_research
 from ..core.format_repair import repair_asr_graph
+from ..core.history import resolve_library_path
+from ..core.language import canonical_language
 from ..core.logging import studio_done, studio_log
 from ..core.models import CueGraph, Job
 from ..core.notify import should_notify
@@ -35,6 +37,8 @@ class GenerationPipeline:
         asr: Optional[Callable[..., Optional[CueGraph]]] = None,
         http: Callable[..., Any] = lambda *args, **kwargs: None,
         llm: Optional[Callable[..., str]] = None,
+        history_loader: Optional[Callable[..., Any]] = None,
+        library_roots: Optional[list[str]] = None,
         logger: Any = None,
         notify: Optional[Callable[[Job], None]] = None,
     ):
@@ -44,6 +48,8 @@ class GenerationPipeline:
         self.asr = asr
         self.http = http
         self.llm = llm
+        self.history_loader = history_loader
+        self.library_roots = list(library_roots or [])
         self.logger = logger
         self.notify = notify
         self._current_job: Optional[Job] = None
@@ -97,6 +103,28 @@ class GenerationPipeline:
             latest.path,
         )
         try:
+            if self.history_loader or self.library_roots:
+                try:
+                    try:
+                        history_rows = list(self.history_loader(limit=800) or []) if self.history_loader else []
+                    except TypeError:
+                        history_rows = list(self.history_loader() or []) if self.history_loader else []
+                    organized_path = resolve_library_path(latest, history_rows, self.library_roots)
+                except Exception as exc:  # noqa: BLE001
+                    studio_log(self.logger, "warning", "解析媒体库整理路径失败：%s", exc)
+                    organized_path = ""
+                if not organized_path:
+                    latest.status = "failed"
+                    latest.error = "未找到整理后的媒体库路径；为避免在下载源目录写入字幕，任务已停止"
+                    studio_log(self.logger, "warning", "未找到整理后的媒体库路径，停止处理源文件 path=%s", latest.path)
+                    return self._finish(latest, config, started)
+                if organized_path != latest.path:
+                    original_path = latest.path
+                    latest.path = organized_path
+                    latest.payload = {**latest.payload, "organized_from": original_path}
+                    latest = self.store.save_job(latest)
+                    self._current_job = latest
+                    studio_log(self.logger, "info", "任务路径改用媒体库整理结果 source=%s library=%s", original_path, organized_path)
             strategy = latest.strategy or config.get("transfer_strategy") or "search_then_translate"
             if latest.is_strm or is_strm_path(latest.path):
                 if strategy == "translate_only":
@@ -134,7 +162,8 @@ class GenerationPipeline:
                 langs = config.get("target_languages") or ["zh-Hans"]
                 self._progress(5, "翻译开始 langs=%s backend=%s cues=%s", langs, config.get("translate_backend") or "free_first", len(graph.cues))
                 graph = translator.translate_graph(graph, langs)
-                rate = translator.failure_rate(graph, langs[0])
+                translated_langs = [lang for lang in langs if canonical_language(lang) != graph.source_lang]
+                rate = max((translator.failure_rate(graph, lang) for lang in translated_langs), default=0.0)
                 studio_log(self.logger, "info", "翻译结束 失败率=%.1f%%", rate * 100)
                 if config.get("abort_on_high_failure") and rate > 0.30:
                     latest.status = "failed"
