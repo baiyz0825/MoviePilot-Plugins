@@ -2,7 +2,7 @@
 
 前缀固定为 [SubtitleStudio]，方便在 MoviePilot 日志里过滤。
 步骤号和 AutoSub 一样用 [Step N]，一条任务从入队到落盘能顺着看完。
-不要把 API Key、完整 prompt、字幕全文打进日志。
+默认不记录完整 prompt 或字幕。llm_debug_logging 显式开启时，可记录请求正文和响应正文；API Key 始终脱敏。
 """
 
 from __future__ import annotations
