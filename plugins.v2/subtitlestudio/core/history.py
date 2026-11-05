@@ -229,8 +229,18 @@ def identity_from_history(entry: Dict[str, Any]) -> Dict[str, str]:
 def expand_history_rows(rows: Iterable[Any]) -> List[Dict[str, Any]]:
     """整理记录 → 每个视频文件一条，供媒体页勾选入队。"""
     expanded: List[Dict[str, Any]] = []
-    for raw in rows or []:
-        entry = history_object_to_dict(raw)
+    entries = [history_object_to_dict(raw) for raw in rows or []]
+    # MoviePilot 会保留每次整理的历史。若旧记录的目标路径后来作为
+    # 新记录的来源路径再次整理，旧目标只是中间副本，媒体页只展示链路末端。
+    superseded_paths = {
+        _norm_path(str(entry.get(key)))
+        for entry in entries
+        for key in ("src", "source", "src_path", "source_path")
+        if entry.get(key)
+        and entry.get("status") not in {False, 0, "0", "false", "False"}
+        and is_media_file(str(entry.get(key)))
+    }
+    for entry in entries:
         if entry.get("status") in {False, 0, "0", "false", "False"}:
             continue
         identity = identity_from_history(entry)
@@ -250,6 +260,8 @@ def expand_history_rows(rows: Iterable[Any]) -> List[Dict[str, Any]]:
         ])
         for path in paths_from_history(entry):
             if not is_media_file(path):
+                continue
+            if _norm_path(path) in superseded_paths:
                 continue
             filename = path.replace("\\", "/").rsplit("/", 1)[-1]
             stem = filename.rsplit(".", 1)[0]
