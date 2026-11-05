@@ -201,7 +201,7 @@ class JobScheduler:
         self._maybe_notify(saved)
         return saved
 
-    def retry(self, job_id: str) -> Optional[Job]:
+    def retry(self, job_id: str, *, overwrite: bool = False) -> Optional[Job]:
         job = self.store.get_job(job_id)
         if not job:
             return None
@@ -212,10 +212,20 @@ class JobScheduler:
         job.progress = 0
         job.stage = ""
         job.stage_detail = ""
-        job.payload = {k: v for k, v in job.payload.items() if k not in {"cancel", "reclaimed"}}
+        payload = {k: v for k, v in job.payload.items() if k not in {"cancel", "reclaimed"}}
+        if overwrite:
+            payload["overwrite"] = True
+        job.payload = payload
         job.queue_rank = self.store.tail_queue_rank()
         saved = self.store.save_job(job)
-        studio_log(self.logger, "info", "重试入队 job=%s title=%s", saved.job_id, saved.title)
+        studio_log(
+            self.logger,
+            "info",
+            "重试入队 job=%s title=%s overwrite=%s",
+            saved.job_id,
+            saved.title,
+            bool(saved.payload.get("overwrite")),
+        )
         self.kick()
         return saved
 

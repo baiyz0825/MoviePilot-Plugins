@@ -17,18 +17,30 @@ SAFE_FONTS = (
     "Helvetica",
 )
 
+# 字号、边距、描边都是这块虚拟画面上的坐标。播放器把整幅画面缩放到成片，不按视频像素再放大。
+REFERENCE_PLAY_HEIGHT = 1080
+
 DEFAULT_ASS_STYLE: Dict[str, Any] = {
     "font_name": "Arial",
     "primary_color": "#FFFFFF",
     "outline_color": "#000000",
     "back_color": "#000000",
     "outline": 2,
-    "shadow": 2,
+    "shadow": 0,
     "bold": False,
     "italic": False,
+    "sizes": [60, 47, 38],
+    "note_size": 32,
+    "note_color": "#B4E0FF",
+    "margin_v": 40,
+    "line_gap": 68,
+}
+
+# 旧默认是预览像素，配上 PlayRes 1080 会显得特别小，还带一层半透明底。
+_LEGACY_PREVIEW_STYLE = {
     "sizes": [22, 17, 14],
     "note_size": 16,
-    "note_color": "#B4E0FF",
+    "shadow": 2,
     "margin_v": 20,
     "line_gap": 28,
 }
@@ -69,15 +81,37 @@ def _hex(value: Any, default: str) -> str:
     return default
 
 
+def _is_legacy_preview_style(raw: Dict[str, Any], sizes: List[int]) -> bool:
+    legacy = _LEGACY_PREVIEW_STYLE
+    if sizes != legacy["sizes"]:
+        return False
+    try:
+        return (
+            int(raw.get("note_size", legacy["note_size"])) == legacy["note_size"]
+            and int(raw.get("shadow", legacy["shadow"])) == legacy["shadow"]
+            and int(raw.get("margin_v", legacy["margin_v"])) == legacy["margin_v"]
+            and int(raw.get("line_gap", legacy["line_gap"])) == legacy["line_gap"]
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def normalize_ass_style(value: Any) -> Dict[str, Any]:
-    raw = value if isinstance(value, dict) else {}
+    raw = dict(value) if isinstance(value, dict) else {}
+    sizes_in = raw.get("sizes") if isinstance(raw.get("sizes"), (list, tuple)) else None
+    if sizes_in is not None and _is_legacy_preview_style(raw, [_clamp_int(item, 0, 0, 999) for item in list(sizes_in)[:3]]):
+        raw["sizes"] = list(DEFAULT_ASS_STYLE["sizes"])
+        raw["note_size"] = DEFAULT_ASS_STYLE["note_size"]
+        raw["shadow"] = DEFAULT_ASS_STYLE["shadow"]
+        raw["margin_v"] = DEFAULT_ASS_STYLE["margin_v"]
+        raw["line_gap"] = DEFAULT_ASS_STYLE["line_gap"]
     sizes_in = raw.get("sizes") if isinstance(raw.get("sizes"), (list, tuple)) else DEFAULT_ASS_STYLE["sizes"]
     sizes = []
     defaults = list(DEFAULT_ASS_STYLE["sizes"])
     for index in range(3):
         fallback = defaults[index] if index < len(defaults) else LANG_FONT_SIZES[-1]
         incoming = sizes_in[index] if index < len(sizes_in) else fallback
-        sizes.append(_clamp_int(incoming, fallback, 8, 72))
+        sizes.append(_clamp_int(incoming, fallback, 8, 108))
     return {
         "font_name": safe_font(raw.get("font_name") or DEFAULT_ASS_STYLE["font_name"]),
         "primary_color": _hex(raw.get("primary_color"), DEFAULT_ASS_STYLE["primary_color"]),
@@ -88,10 +122,10 @@ def normalize_ass_style(value: Any) -> Dict[str, Any]:
         "bold": bool(raw.get("bold")),
         "italic": bool(raw.get("italic")),
         "sizes": sizes,
-        "note_size": _clamp_int(raw.get("note_size"), DEFAULT_ASS_STYLE["note_size"], 8, 48),
+        "note_size": _clamp_int(raw.get("note_size"), DEFAULT_ASS_STYLE["note_size"], 8, 80),
         "note_color": _hex(raw.get("note_color"), DEFAULT_ASS_STYLE["note_color"]),
-        "margin_v": _clamp_int(raw.get("margin_v"), DEFAULT_ASS_STYLE["margin_v"], 0, 160),
-        "line_gap": _clamp_int(raw.get("line_gap"), DEFAULT_ASS_STYLE["line_gap"], 8, 80),
+        "margin_v": _clamp_int(raw.get("margin_v"), DEFAULT_ASS_STYLE["margin_v"], 0, 216),
+        "line_gap": _clamp_int(raw.get("line_gap"), DEFAULT_ASS_STYLE["line_gap"], 8, 160),
     }
 
 
@@ -117,16 +151,22 @@ def ass_style_line(
     color: str,
     alignment: int,
     margin_v: int,
+    outline_px: int | None = None,
+    shadow_px: int | None = None,
 ) -> str:
     spec = normalize_ass_style(style)
     bold = -1 if spec["bold"] else 0
     italic = -1 if spec["italic"] else 0
     primary = hex_to_ass(color)
     secondary = "&H000000FF"
-    outline = hex_to_ass(spec["outline_color"])
-    back = hex_to_ass(spec["back_color"], alpha=0x64)
+    outline_color = hex_to_ass(spec["outline_color"])
+    outline_px = spec["outline"] if outline_px is None else max(0, int(outline_px))
+    shadow_px = spec["shadow"] if shadow_px is None else max(0, int(shadow_px))
+    # BorderStyle 1 是描边。阴影为 0 时底色全透明，避免播放器铺一条底。
+    back_alpha = 0xFF if shadow_px <= 0 else 0x80
+    back = hex_to_ass(spec["back_color"], alpha=back_alpha)
     return (
-        f"Style: {name},{spec['font_name']},{size},{primary},{secondary},{outline},{back},"
-        f"{bold},{italic},0,0,100,100,0,0,1,{spec['outline']},{spec['shadow']},"
+        f"Style: {name},{spec['font_name']},{size},{primary},{secondary},{outline_color},{back},"
+        f"{bold},{italic},0,0,100,100,0,0,1,{outline_px},{shadow_px},"
         f"{alignment},10,10,{margin_v},1"
     )

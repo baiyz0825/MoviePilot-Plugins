@@ -50,7 +50,7 @@ class EffectsBuilder:
         self._research_used = 0
         self._research_failures = 0
 
-    def apply(self, graph: CueGraph, *, title: str = "") -> CueGraph:
+    def apply(self, graph: CueGraph, *, title: str = "", on_progress=None) -> CueGraph:
         if not self.config.get("effects_enabled"):
             graph.notes = []
             graph.briefing = []
@@ -62,7 +62,11 @@ class EffectsBuilder:
         notes: List[Cue] = []
         briefing: List[Dict[str, Any]] = []
         if self.config.get("effects_character_briefs", True) or self.config.get("effects_keyword_notes", True):
-            for cue in graph.sorted_cues():
+            cues = list(graph.sorted_cues())
+            total = len(cues)
+            for index, cue in enumerate(cues, start=1):
+                if callable(on_progress) and (index == 1 or index == total or index % 12 == 0):
+                    on_progress(index, total)
                 if callable(self.cancel_check):
                     self.cancel_check()
                 if self._research_used >= max_research or self._research_failures >= 8:

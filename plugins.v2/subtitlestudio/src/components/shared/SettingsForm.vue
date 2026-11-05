@@ -1,6 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { LANGS, PANES, PRESETS, STYLE_FONTS, STYLE_LOOKS, applyPreset, exportPreview, langLabel, normalizeStyle, overlayCss, sizeForRank } from '../../composables/fields'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { ASS_REFERENCE_HEIGHT, LANGS, PANES, PRESETS, STYLE_FONTS, STYLE_LOOKS, applyPreset, exportPreview, frameLabel, frameShare, langLabel, normalizeStyle, overlayCss, sizeForRank } from '../../composables/fields'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -122,20 +122,42 @@ function ensureAssFormat() {
   setField('export_formats', formats)
 }
 
+const previewHeight = ref(0)
+let previewObserver
+
+function bindPreview(element) {
+  previewObserver?.disconnect()
+  previewObserver = null
+  if (!element) return
+  const read = () => {
+    previewHeight.value = element.clientHeight || 0
+  }
+  read()
+  if (typeof ResizeObserver !== 'undefined') {
+    previewObserver = new ResizeObserver(read)
+    previewObserver.observe(element)
+  }
+}
+
+onBeforeUnmount(() => previewObserver?.disconnect())
+
 const stylePreview = computed(() => {
   const stack = config.value.lang_stack || 'main_bottom'
   const langs = config.value.target_languages || ['zh-Hans']
+  const scale = (previewHeight.value > 0 ? previewHeight.value : 180) / ASS_REFERENCE_HEIGHT
+  const margin = Math.round(assStyle.value.margin_v * scale)
+  const gap = Math.round(assStyle.value.line_gap * scale)
   return {
     stack,
     langs,
-    main: overlayCss(assStyle.value, 0),
-    second: overlayCss(assStyle.value, 1),
-    third: overlayCss(assStyle.value, 2),
-    note: overlayCss(assStyle.value, 0, 'note'),
-    mainBottom: `${assStyle.value.margin_v}px`,
-    secondBottom: `${assStyle.value.margin_v + assStyle.value.line_gap}px`,
-    thirdBottom: `${assStyle.value.margin_v + assStyle.value.line_gap * 2}px`,
-    noteTop: `${Math.max(12, assStyle.value.margin_v - 4)}px`,
+    main: overlayCss(assStyle.value, 0, 'dialogue', scale),
+    second: overlayCss(assStyle.value, 1, 'dialogue', scale),
+    third: overlayCss(assStyle.value, 2, 'dialogue', scale),
+    note: overlayCss(assStyle.value, 0, 'note', scale),
+    mainBottom: `${margin}px`,
+    secondBottom: `${margin + gap}px`,
+    thirdBottom: `${margin + gap * 2}px`,
+    noteTop: `${Math.max(8, margin)}px`,
   }
 })
 
@@ -211,7 +233,7 @@ function fallbackFields() {
       { title: '跳过', value: 'skip' }, { title: '备份后替换', value: 'backup' }, { title: '直接覆盖', value: 'overwrite' },
     ] },
     { pane: 'export', key: 'enable_sdh', label: '写出 SDH 轨', control: 'switch' },
-    { pane: 'export', key: 'ass_style', label: '字幕样式', control: 'style-editor', purpose: 'ASS 对白和顶注的字体、颜色、主/次字号。', after: '改完即时预览。字体颜色只写入 ASS。' },
+    { pane: 'export', key: 'ass_style', label: '字幕样式', control: 'style-editor', purpose: 'ASS 对白和顶注的字体、颜色、主/次字号。字号是 1080 高画面上的坐标。', after: '播放器缩放整幅画面，不用按 4K 再放大。位置用对齐和边距，跟着画面走。对白只有描边，默认没有底色。字体颜色只写入 ASS。' },
     { pane: 'effects', key: 'effects_enabled', label: '支持特效字幕', control: 'switch' },
     { pane: 'effects', key: 'effects_keep_downloaded', label: '保留下载的解说 / 屏字', control: 'switch' },
     { pane: 'effects', key: 'effects_character_briefs', label: '人物 / 专名背景顶注', control: 'switch' },
@@ -376,7 +398,7 @@ const files = computed(() => exportPreview(config.value))
               <div v-else-if="field.control === 'lang-order'">
                 <div class="text-body-2 mb-2">{{ field.label }}</div>
                 <div v-for="(lang, index) in config.target_languages || []" :key="lang" class="d-flex align-center ga-2 mb-2">
-                  <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ sizeForRank(index, assStyle) }}px</VChip>
+                  <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ frameLabel(sizeForRank(index, assStyle)) }}</VChip>
                   <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveLang(index, -1)" />
                   <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveLang(index, 1)" />
                   <VBtn icon="mdi-close" size="small" class="ss-touch" @click="toggleList('target_languages', lang)" />
@@ -511,7 +533,7 @@ const files = computed(() => exportPreview(config.value))
           <div v-else-if="field.control === 'lang-order'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
             <div v-for="(lang, index) in config.target_languages || []" :key="lang" class="d-flex align-center ga-2 mb-2">
-              <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ sizeForRank(index, assStyle) }}px</VChip>
+              <VChip color="primary">{{ index + 1 }} · {{ langLabel(lang) }} · {{ frameLabel(sizeForRank(index, assStyle)) }}</VChip>
               <VBtn icon="mdi-arrow-up" size="small" class="ss-touch" @click="moveLang(index, -1)" />
               <VBtn icon="mdi-arrow-down" size="small" class="ss-touch" @click="moveLang(index, 1)" />
               <VBtn icon="mdi-close" size="small" class="ss-touch" @click="toggleList('target_languages', lang)" />
@@ -568,7 +590,7 @@ const files = computed(() => exportPreview(config.value))
                 {{ look.title }}
               </VChip>
             </div>
-            <div class="ss-style-preview mb-4" :class="{ 'ss-style-preview--top': stylePreview.stack === 'main_top' }">
+            <div :ref="bindPreview" class="ss-style-preview mb-2" :class="{ 'ss-style-preview--top': stylePreview.stack === 'main_top' }">
               <div class="ss-style-preview__note" :style="{ ...stylePreview.note, top: stylePreview.noteTop }">钢铁侠 / 托尼·斯塔克</div>
               <div
                 v-if="stylePreview.langs[2]"
@@ -590,6 +612,9 @@ const files = computed(() => exportPreview(config.value))
               >
                 这是主字幕
               </div>
+            </div>
+            <div class="text-caption text-medium-emphasis mb-4">
+              这块 16:9 是整幅画面的缩小。主字号 {{ assStyle.sizes[0] }} 约占高度 {{ frameShare(assStyle.sizes[0]) }}，底边距 {{ assStyle.margin_v }} 约占 {{ frameShare(assStyle.margin_v) }}。成片按同一比例放大整幅画面。
             </div>
             <VRow dense>
               <VCol cols="12" md="6">
@@ -626,7 +651,7 @@ const files = computed(() => exportPreview(config.value))
                 </label>
               </VCol>
               <VCol cols="4">
-                <VTextField :model-value="assStyle.sizes[0]" type="number" label="主字号" @update:model-value="setStyleSize(0, $event)" />
+                <VTextField :model-value="assStyle.sizes[0]" type="number" label="主字号（画面坐标）" @update:model-value="setStyleSize(0, $event)" />
               </VCol>
               <VCol cols="4">
                 <VTextField :model-value="assStyle.sizes[1]" type="number" label="次行小字" @update:model-value="setStyleSize(1, $event)" />

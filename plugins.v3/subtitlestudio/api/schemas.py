@@ -35,6 +35,10 @@ try:
         counts: Dict[str, int] = Field(default_factory=dict)
         source: str = "transfer_history"
 
+    class HideMediaData(_Extra):
+        hidden: int = 0
+        deleted_files: List[str] = Field(default_factory=list)
+
     class JobData(_Extra):
         job_id: str = ""
         title: str = ""
@@ -87,6 +91,9 @@ except Exception:  # noqa: BLE001 — 单测环境可能没有 pydantic
     class MediaListData:  # type: ignore[no-redef]
         pass
 
+    class HideMediaData:  # type: ignore[no-redef]
+        pass
+
     class JobData:  # type: ignore[no-redef]
         pass
 
@@ -119,6 +126,7 @@ _PAYLOADS = {
     ("/fields", "GET"): FieldsData,
     ("/media", "GET"): MediaListData,
     ("/media/refresh", "POST"): MediaListData,
+    ("/media/hide", "POST"): HideMediaData,
     ("/jobs", "GET"): JobListData,
     ("/jobs", "POST"): JobData,
     ("/jobs/batch", "POST"): JobBatchData,

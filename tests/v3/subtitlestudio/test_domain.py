@@ -36,6 +36,10 @@ def test_asr_repair_drops_empty_and_fixes_overlap():
     shared.test_asr_repair_drops_empty_and_fixes_overlap(gen="v3")
 
 
+def test_asr_repair_splits_paragraph_on_sentences():
+    shared.test_asr_repair_splits_paragraph_on_sentences(gen="v3")
+
+
 def test_export_plan_cartesian_and_extras():
     shared.test_export_plan_cartesian_and_extras(gen="v3")
 
@@ -46,3 +50,11 @@ def test_export_plan_uses_player_language_tags():
 
 def test_packager_writes_and_skip_policy(tmp_path):
     shared.test_packager_writes_and_skip_policy(tmp_path, gen="v3")
+
+
+def test_delete_generated_subtitles_leaves_source_and_video(tmp_path):
+    shared.test_delete_generated_subtitles_leaves_source_and_video(tmp_path, gen="v3")
+
+
+def test_hidden_media_paths_roundtrip(tmp_path):
+    shared.test_hidden_media_paths_roundtrip(tmp_path, gen="v3")

@@ -54,38 +54,58 @@ export const STYLE_LOOKS = [
   { title: '白字软影', patch: { primary_color: '#FFFFFF', outline_color: '#000000', outline: 1, shadow: 4 } },
 ]
 
+export const ASS_REFERENCE_HEIGHT = 1080
+
+export const FRAME_LIMITS = {
+  size: [8, 108],
+  note: [8, 80],
+  margin: [0, 216],
+  gap: [8, 160],
+}
+
+export function frameShare(size) {
+  const number = Number(size)
+  if (!Number.isFinite(number)) return ''
+  return `${(number / ASS_REFERENCE_HEIGHT * 100).toFixed(1)}%`
+}
+
+export function frameLabel(size) {
+  const number = Math.round(Number(size) || 0)
+  return `${number} · ${frameShare(number)}`
+}
+
 export const DEFAULT_ASS_STYLE = {
   font_name: 'Arial',
   primary_color: '#FFFFFF',
   outline_color: '#000000',
   back_color: '#000000',
   outline: 2,
-  shadow: 2,
+  shadow: 0,
   bold: false,
   italic: false,
-  sizes: [22, 17, 14],
-  note_size: 16,
+  sizes: [60, 47, 38],
+  note_size: 32,
   note_color: '#B4E0FF',
-  margin_v: 20,
-  line_gap: 28,
+  margin_v: 40,
+  line_gap: 68,
 }
 
 export function normalizeStyle(value) {
   const raw = value && typeof value === 'object' ? value : {}
   const sizes = [0, 1, 2].map(index => {
     const next = Number((raw.sizes || DEFAULT_ASS_STYLE.sizes)[index] ?? DEFAULT_ASS_STYLE.sizes[index])
-    return Math.max(8, Math.min(72, Number.isFinite(next) ? next : DEFAULT_ASS_STYLE.sizes[index]))
+    return Math.max(FRAME_LIMITS.size[0], Math.min(FRAME_LIMITS.size[1], Number.isFinite(next) ? next : DEFAULT_ASS_STYLE.sizes[index]))
   })
   return {
     ...DEFAULT_ASS_STYLE,
     ...raw,
     font_name: String(raw.font_name || DEFAULT_ASS_STYLE.font_name).replace(/[,\\]/g, '') || 'Arial',
     sizes,
-    outline: Math.max(0, Math.min(8, Number(raw.outline ?? 2))),
-    shadow: Math.max(0, Math.min(8, Number(raw.shadow ?? 2))),
-    note_size: Math.max(8, Math.min(48, Number(raw.note_size ?? 16))),
-    margin_v: Math.max(0, Math.min(160, Number(raw.margin_v ?? 20))),
-    line_gap: Math.max(8, Math.min(80, Number(raw.line_gap ?? 28))),
+    outline: Math.max(0, Math.min(8, Number(raw.outline ?? DEFAULT_ASS_STYLE.outline))),
+    shadow: Math.max(0, Math.min(8, Number(raw.shadow ?? DEFAULT_ASS_STYLE.shadow))),
+    note_size: Math.max(FRAME_LIMITS.note[0], Math.min(FRAME_LIMITS.note[1], Number(raw.note_size ?? DEFAULT_ASS_STYLE.note_size))),
+    margin_v: Math.max(FRAME_LIMITS.margin[0], Math.min(FRAME_LIMITS.margin[1], Number(raw.margin_v ?? DEFAULT_ASS_STYLE.margin_v))),
+    line_gap: Math.max(FRAME_LIMITS.gap[0], Math.min(FRAME_LIMITS.gap[1], Number(raw.line_gap ?? DEFAULT_ASS_STYLE.line_gap))),
     bold: Boolean(raw.bold),
     italic: Boolean(raw.italic),
   }
@@ -96,18 +116,25 @@ export function sizeForRank(index, style) {
   return sizes[index] ?? sizes[sizes.length - 1] ?? 14
 }
 
-export function overlayCss(style, rank = 0, kind = 'dialogue') {
+export function overlayCss(style, rank = 0, kind = 'dialogue', scale = 1) {
   const spec = normalizeStyle(style)
   const size = kind === 'note' ? spec.note_size : sizeForRank(rank, spec)
   const color = kind === 'note' ? spec.note_color : spec.primary_color
-  const outline = `${spec.outline}px ${spec.outline_color}`
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
+  const px = Math.max(1, Math.round(size * safeScale))
+  const outlinePx = Math.max(0, spec.outline * safeScale)
+  const shadowPx = Math.max(0, spec.shadow * safeScale)
+  const outline = `${outlinePx}px ${spec.outline_color}`
+  const shadow = shadowPx > 0 ? `, 0 ${shadowPx}px ${shadowPx}px rgba(0,0,0,.45)` : ''
   return {
     fontFamily: `'${spec.font_name}', sans-serif`,
-    fontSize: `${size}px`,
+    fontSize: `${px}px`,
     color,
+    background: 'transparent',
     fontWeight: spec.bold ? '700' : '400',
     fontStyle: spec.italic ? 'italic' : 'normal',
-    textShadow: `0 0 ${spec.outline}px ${spec.outline_color}, 0 ${spec.shadow}px ${spec.shadow}px rgba(0,0,0,.65), -1px 0 ${outline}, 1px 0 ${outline}, 0 -1px ${outline}, 0 1px ${outline}`,
+    lineHeight: '1',
+    textShadow: `0 0 ${outlinePx}px ${spec.outline_color}, -1px 0 ${outline}, 1px 0 ${outline}, 0 -1px ${outline}, 0 1px ${outline}${shadow}`,
   }
 }
 

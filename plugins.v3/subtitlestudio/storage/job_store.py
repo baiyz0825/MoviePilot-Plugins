@@ -53,6 +53,12 @@ CREATE INDEX IF NOT EXISTS idx_ss_jobs_title
     ON plugin_subtitlestudio_jobs (plugin_id, title);
 CREATE INDEX IF NOT EXISTS idx_ss_jobs_plugin_path_status
     ON plugin_subtitlestudio_jobs (plugin_id, path, status);
+CREATE TABLE IF NOT EXISTS plugin_subtitlestudio_hidden (
+    plugin_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    created_at TEXT,
+    PRIMARY KEY (plugin_id, path)
+);
 """
 
 
@@ -266,6 +272,38 @@ class JobStore:
             ).fetchone()
         current = row[0] if row and row[0] is not None else 0
         return int(current) + 1
+
+    def hide_paths(self, paths: Iterable[str]) -> int:
+        """从媒体列表隐藏这些路径。不删视频，也不改宿主整理记录。"""
+        now = utc_now()
+        rows = []
+        seen = set()
+        for raw in paths:
+            path = str(raw or "").strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            rows.append((self.plugin_id, path, now))
+        if not rows:
+            return 0
+        with self._lock, self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO plugin_subtitlestudio_hidden (plugin_id, path, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(plugin_id, path) DO NOTHING
+                """,
+                rows,
+            )
+        return len(rows)
+
+    def hidden_paths(self) -> set:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT path FROM plugin_subtitlestudio_hidden WHERE plugin_id=?",
+                (self.plugin_id,),
+            ).fetchall()
+        return {str(row["path"]) for row in rows if row["path"]}
 
     def save_graph(self, graph: CueGraph) -> None:
         with self._lock, self._connect() as conn:

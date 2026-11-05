@@ -21,6 +21,57 @@ from .models import CueGraph
 SKIP_CODECS = {"pgssub", "dvd_subtitle", "vobsub", "hdmv_pgs_subtitle", "pgs"}
 
 
+def probe_video_resolution(path: str, logger: Any = None) -> tuple:
+    """返回视频显示宽高。失败时 (0, 0)，调用方再退回 1920×1080。"""
+    if not path or not Path(path).is_file():
+        return 0, 0
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "v:0", path],
+            capture_output=True, text=True, timeout=20,
+        )
+    except FileNotFoundError:
+        studio_log(logger, "info", "未安装 ffprobe，ASS 画面按 16:9 写出")
+        return 0, 0
+    except Exception as exc:  # noqa: BLE001
+        studio_log(logger, "warning", "读取视频分辨率失败：%s", exc)
+        return 0, 0
+    if result.returncode != 0 or not result.stdout.strip():
+        return 0, 0
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return 0, 0
+    streams = data.get("streams") or []
+    if not streams:
+        return 0, 0
+    stream = streams[0]
+    try:
+        width = int(stream.get("width") or 0)
+        height = int(stream.get("height") or 0)
+    except (TypeError, ValueError):
+        return 0, 0
+    sar = str(stream.get("sample_aspect_ratio") or "1:1")
+    if ":" in sar:
+        num, den = sar.split(":", 1)
+        try:
+            if int(num) > 0 and int(den) > 0:
+                width = int(round(width * int(num) / int(den)))
+        except ValueError:
+            pass
+    tags = stream.get("tags") if isinstance(stream.get("tags"), dict) else {}
+    try:
+        rotation = abs(int(float(str(tags.get("rotate") or 0)))) % 360
+    except (TypeError, ValueError):
+        rotation = 0
+    if rotation in {90, 270}:
+        width, height = height, width
+    if width < 16 or height < 16:
+        return 0, 0
+    return width, height
+
+
 def probe_subtitle_streams(path: str, logger: Any = None) -> List[Dict[str, Any]]:
     """ffprobe 扫描字幕流，返回 [{index, codec, language, title}]，跳过图形字幕。"""
     try:

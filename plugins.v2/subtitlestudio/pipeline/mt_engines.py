@@ -35,7 +35,7 @@ class FreeMtRouter:
         self.cancel_check = cancel_check
         self._max_consecutive_errors = max(2, int(config.get("mt_max_consecutive_errors") or 5))
 
-    def translate_batch(self, texts: List[str], *, source: str, target: str) -> List[Optional[str]]:
+    def translate_batch(self, texts: List[str], *, source: str, target: str, on_item=None) -> List[Optional[str]]:
         engines = list(self.config.get("mt_engines") or ["edge", "gtx"])
         last_error = ""
         for engine in engines:
@@ -43,19 +43,19 @@ class FreeMtRouter:
                 self.cancel_check()
             try:
                 if engine == "edge":
-                    return self._map_texts(texts, lambda text: self._edge_one(text, source, target), engine)
+                    return self._map_texts(texts, lambda text: self._edge_one(text, source, target), engine, on_item=on_item)
                 if engine == "gtx":
-                    return self._map_texts(texts, lambda text: self._gtx_one(text, source, target), engine)
+                    return self._map_texts(texts, lambda text: self._gtx_one(text, source, target), engine, on_item=on_item)
                 if engine == "deeplx":
-                    return self._map_texts(texts, lambda text: self._deeplx_one(text, source, target), engine)
+                    return self._map_texts(texts, lambda text: self._deeplx_one(text, source, target), engine, on_item=on_item)
                 if engine == "libre":
-                    return self._map_texts(texts, lambda text: self._libre_one(text, source, target), engine)
+                    return self._map_texts(texts, lambda text: self._libre_one(text, source, target), engine, on_item=on_item)
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
                 studio_log(self.logger, "warning", "免费引擎 %s 失败：%s", engine, exc)
         raise RuntimeError(last_error or "免费翻译引擎全部失败")
 
-    def _map_texts(self, texts: List[str], fn, engine: str) -> List[Optional[str]]:
+    def _map_texts(self, texts: List[str], fn, engine: str, on_item=None) -> List[Optional[str]]:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         workers = max(1, min(8, int(self.config.get("parallel_workers") or 3)))
@@ -72,6 +72,8 @@ class FreeMtRouter:
                 except Exception as exc:  # noqa: BLE001
                     consecutive += 1
                     studio_log(self.logger, "debug", "%s 单句失败：%s", engine, exc)
+                if callable(on_item):
+                    on_item()
                 if consecutive >= self._max_consecutive_errors:
                     raise RuntimeError(f"{engine} 连续失败过多")
             return results
@@ -87,6 +89,8 @@ class FreeMtRouter:
                 except Exception as exc:  # noqa: BLE001
                     consecutive += 1
                     studio_log(self.logger, "debug", "%s 单句失败：%s", engine, exc)
+                if callable(on_item):
+                    on_item()
                 if consecutive >= self._max_consecutive_errors * 2:
                     raise RuntimeError(f"{engine} 连续失败过多")
         return results

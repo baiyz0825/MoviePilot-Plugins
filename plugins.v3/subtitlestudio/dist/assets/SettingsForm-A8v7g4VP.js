@@ -19,7 +19,7 @@ function useHostInjects() {
   return { toast, dialog, confirm, nativeSubscribe }
 }
 
-const {onBeforeUnmount,onMounted,ref: ref$1} = await importShared('vue');
+const {onBeforeUnmount: onBeforeUnmount$1,onMounted,ref: ref$1} = await importShared('vue');
 
 
 const MOBILE_QUERY = '(max-width: 899px)';
@@ -43,7 +43,7 @@ function useMobileViewport(query = MOBILE_QUERY) {
     mediaQueryList.addListener(syncViewport);
   });
 
-  onBeforeUnmount(() => {
+  onBeforeUnmount$1(() => {
     if (!mediaQueryList) return
     if (typeof mediaQueryList.removeEventListener === 'function') {
       mediaQueryList.removeEventListener('change', syncViewport);
@@ -111,38 +111,58 @@ const STYLE_LOOKS = [
   { title: '白字软影', patch: { primary_color: '#FFFFFF', outline_color: '#000000', outline: 1, shadow: 4 } },
 ];
 
+const ASS_REFERENCE_HEIGHT = 1080;
+
+const FRAME_LIMITS = {
+  size: [8, 108],
+  note: [8, 80],
+  margin: [0, 216],
+  gap: [8, 160],
+};
+
+function frameShare(size) {
+  const number = Number(size);
+  if (!Number.isFinite(number)) return ''
+  return `${(number / ASS_REFERENCE_HEIGHT * 100).toFixed(1)}%`
+}
+
+function frameLabel(size) {
+  const number = Math.round(Number(size) || 0);
+  return `${number} · ${frameShare(number)}`
+}
+
 const DEFAULT_ASS_STYLE = {
   font_name: 'Arial',
   primary_color: '#FFFFFF',
   outline_color: '#000000',
   back_color: '#000000',
   outline: 2,
-  shadow: 2,
+  shadow: 0,
   bold: false,
   italic: false,
-  sizes: [22, 17, 14],
-  note_size: 16,
+  sizes: [60, 47, 38],
+  note_size: 32,
   note_color: '#B4E0FF',
-  margin_v: 20,
-  line_gap: 28,
+  margin_v: 40,
+  line_gap: 68,
 };
 
 function normalizeStyle(value) {
   const raw = value && typeof value === 'object' ? value : {};
   const sizes = [0, 1, 2].map(index => {
     const next = Number((raw.sizes || DEFAULT_ASS_STYLE.sizes)[index] ?? DEFAULT_ASS_STYLE.sizes[index]);
-    return Math.max(8, Math.min(72, Number.isFinite(next) ? next : DEFAULT_ASS_STYLE.sizes[index]))
+    return Math.max(FRAME_LIMITS.size[0], Math.min(FRAME_LIMITS.size[1], Number.isFinite(next) ? next : DEFAULT_ASS_STYLE.sizes[index]))
   });
   return {
     ...DEFAULT_ASS_STYLE,
     ...raw,
     font_name: String(raw.font_name || DEFAULT_ASS_STYLE.font_name).replace(/[,\\]/g, '') || 'Arial',
     sizes,
-    outline: Math.max(0, Math.min(8, Number(raw.outline ?? 2))),
-    shadow: Math.max(0, Math.min(8, Number(raw.shadow ?? 2))),
-    note_size: Math.max(8, Math.min(48, Number(raw.note_size ?? 16))),
-    margin_v: Math.max(0, Math.min(160, Number(raw.margin_v ?? 20))),
-    line_gap: Math.max(8, Math.min(80, Number(raw.line_gap ?? 28))),
+    outline: Math.max(0, Math.min(8, Number(raw.outline ?? DEFAULT_ASS_STYLE.outline))),
+    shadow: Math.max(0, Math.min(8, Number(raw.shadow ?? DEFAULT_ASS_STYLE.shadow))),
+    note_size: Math.max(FRAME_LIMITS.note[0], Math.min(FRAME_LIMITS.note[1], Number(raw.note_size ?? DEFAULT_ASS_STYLE.note_size))),
+    margin_v: Math.max(FRAME_LIMITS.margin[0], Math.min(FRAME_LIMITS.margin[1], Number(raw.margin_v ?? DEFAULT_ASS_STYLE.margin_v))),
+    line_gap: Math.max(FRAME_LIMITS.gap[0], Math.min(FRAME_LIMITS.gap[1], Number(raw.line_gap ?? DEFAULT_ASS_STYLE.line_gap))),
     bold: Boolean(raw.bold),
     italic: Boolean(raw.italic),
   }
@@ -153,18 +173,25 @@ function sizeForRank(index, style) {
   return sizes[index] ?? sizes[sizes.length - 1] ?? 14
 }
 
-function overlayCss(style, rank = 0, kind = 'dialogue') {
+function overlayCss(style, rank = 0, kind = 'dialogue', scale = 1) {
   const spec = normalizeStyle(style);
   const size = kind === 'note' ? spec.note_size : sizeForRank(rank, spec);
   const color = kind === 'note' ? spec.note_color : spec.primary_color;
-  const outline = `${spec.outline}px ${spec.outline_color}`;
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const px = Math.max(1, Math.round(size * safeScale));
+  const outlinePx = Math.max(0, spec.outline * safeScale);
+  const shadowPx = Math.max(0, spec.shadow * safeScale);
+  const outline = `${outlinePx}px ${spec.outline_color}`;
+  const shadow = shadowPx > 0 ? `, 0 ${shadowPx}px ${shadowPx}px rgba(0,0,0,.45)` : '';
   return {
     fontFamily: `'${spec.font_name}', sans-serif`,
-    fontSize: `${size}px`,
+    fontSize: `${px}px`,
     color,
+    background: 'transparent',
     fontWeight: spec.bold ? '700' : '400',
     fontStyle: spec.italic ? 'italic' : 'normal',
-    textShadow: `0 0 ${spec.outline}px ${spec.outline_color}, 0 ${spec.shadow}px ${spec.shadow}px rgba(0,0,0,.65), -1px 0 ${outline}, 1px 0 ${outline}, 0 -1px ${outline}, 0 1px ${outline}`,
+    lineHeight: '1',
+    textShadow: `0 0 ${outlinePx}px ${spec.outline_color}, -1px 0 ${outline}, 1px 0 ${outline}, 0 -1px ${outline}, 0 1px ${outline}${shadow}`,
   }
 }
 
@@ -276,16 +303,17 @@ const _hoisted_30 = {
 };
 const _hoisted_31 = { class: "text-body-2 mb-2" };
 const _hoisted_32 = { class: "d-flex flex-wrap ga-2 mb-3" };
-const _hoisted_33 = { class: "ss-color-field" };
-const _hoisted_34 = ["value"];
-const _hoisted_35 = { class: "ss-color-field" };
-const _hoisted_36 = ["value"];
-const _hoisted_37 = { class: "ss-color-field" };
-const _hoisted_38 = ["value"];
-const _hoisted_39 = { class: "d-flex flex-wrap ga-2" };
-const _hoisted_40 = { class: "ss-help" };
+const _hoisted_33 = { class: "text-caption text-medium-emphasis mb-4" };
+const _hoisted_34 = { class: "ss-color-field" };
+const _hoisted_35 = ["value"];
+const _hoisted_36 = { class: "ss-color-field" };
+const _hoisted_37 = ["value"];
+const _hoisted_38 = { class: "ss-color-field" };
+const _hoisted_39 = ["value"];
+const _hoisted_40 = { class: "d-flex flex-wrap ga-2" };
+const _hoisted_41 = { class: "ss-help" };
 
-const {computed,ref,watch} = await importShared('vue');
+const {computed,onBeforeUnmount,ref,watch} = await importShared('vue');
 
 
 const _sfc_main = {
@@ -414,20 +442,42 @@ function ensureAssFormat() {
   setField('export_formats', formats);
 }
 
+const previewHeight = ref(0);
+let previewObserver;
+
+function bindPreview(element) {
+  previewObserver?.disconnect();
+  previewObserver = null;
+  if (!element) return
+  const read = () => {
+    previewHeight.value = element.clientHeight || 0;
+  };
+  read();
+  if (typeof ResizeObserver !== 'undefined') {
+    previewObserver = new ResizeObserver(read);
+    previewObserver.observe(element);
+  }
+}
+
+onBeforeUnmount(() => previewObserver?.disconnect());
+
 const stylePreview = computed(() => {
   const stack = config.value.lang_stack || 'main_bottom';
   const langs = config.value.target_languages || ['zh-Hans'];
+  const scale = (previewHeight.value > 0 ? previewHeight.value : 180) / ASS_REFERENCE_HEIGHT;
+  const margin = Math.round(assStyle.value.margin_v * scale);
+  const gap = Math.round(assStyle.value.line_gap * scale);
   return {
     stack,
     langs,
-    main: overlayCss(assStyle.value, 0),
-    second: overlayCss(assStyle.value, 1),
-    third: overlayCss(assStyle.value, 2),
-    note: overlayCss(assStyle.value, 0, 'note'),
-    mainBottom: `${assStyle.value.margin_v}px`,
-    secondBottom: `${assStyle.value.margin_v + assStyle.value.line_gap}px`,
-    thirdBottom: `${assStyle.value.margin_v + assStyle.value.line_gap * 2}px`,
-    noteTop: `${Math.max(12, assStyle.value.margin_v - 4)}px`,
+    main: overlayCss(assStyle.value, 0, 'dialogue', scale),
+    second: overlayCss(assStyle.value, 1, 'dialogue', scale),
+    third: overlayCss(assStyle.value, 2, 'dialogue', scale),
+    note: overlayCss(assStyle.value, 0, 'note', scale),
+    mainBottom: `${margin}px`,
+    secondBottom: `${margin + gap}px`,
+    thirdBottom: `${margin + gap * 2}px`,
+    noteTop: `${Math.max(8, margin)}px`,
   }
 });
 
@@ -503,7 +553,7 @@ function fallbackFields() {
       { title: '跳过', value: 'skip' }, { title: '备份后替换', value: 'backup' }, { title: '直接覆盖', value: 'overwrite' },
     ] },
     { pane: 'export', key: 'enable_sdh', label: '写出 SDH 轨', control: 'switch' },
-    { pane: 'export', key: 'ass_style', label: '字幕样式', control: 'style-editor', purpose: 'ASS 对白和顶注的字体、颜色、主/次字号。', after: '改完即时预览。字体颜色只写入 ASS。' },
+    { pane: 'export', key: 'ass_style', label: '字幕样式', control: 'style-editor', purpose: 'ASS 对白和顶注的字体、颜色、主/次字号。字号是 1080 高画面上的坐标。', after: '播放器缩放整幅画面，不用按 4K 再放大。位置用对齐和边距，跟着画面走。对白只有描边，默认没有底色。字体颜色只写入 ASS。' },
     { pane: 'effects', key: 'effects_enabled', label: '支持特效字幕', control: 'switch' },
     { pane: 'effects', key: 'effects_keep_downloaded', label: '保留下载的解说 / 屏字', control: 'switch' },
     { pane: 'effects', key: 'effects_character_briefs', label: '人物 / 专名背景顶注', control: 'switch' },
@@ -800,7 +850,7 @@ return (_ctx, _cache) => {
                                                       }, [
                                                         _createVNode(_component_VChip, { color: "primary" }, {
                                                           default: _withCtx(() => [
-                                                            _createTextVNode(_toDisplayString(index + 1) + " · " + _toDisplayString(_unref(langLabel)(lang)) + " · " + _toDisplayString(_unref(sizeForRank)(index, assStyle.value)) + "px", 1)
+                                                            _createTextVNode(_toDisplayString(index + 1) + " · " + _toDisplayString(_unref(langLabel)(lang)) + " · " + _toDisplayString(_unref(frameLabel)(_unref(sizeForRank)(index, assStyle.value))), 1)
                                                           ]),
                                                           _: 2
                                                         }, 1024),
@@ -1098,7 +1148,7 @@ return (_ctx, _cache) => {
                                           }, [
                                             _createVNode(_component_VChip, { color: "primary" }, {
                                               default: _withCtx(() => [
-                                                _createTextVNode(_toDisplayString(index + 1) + " · " + _toDisplayString(_unref(langLabel)(lang)) + " · " + _toDisplayString(_unref(sizeForRank)(index, assStyle.value)) + "px", 1)
+                                                _createTextVNode(_toDisplayString(index + 1) + " · " + _toDisplayString(_unref(langLabel)(lang)) + " · " + _toDisplayString(_unref(frameLabel)(_unref(sizeForRank)(index, assStyle.value))), 1)
                                               ]),
                                               _: 2
                                             }, 1024),
@@ -1257,7 +1307,9 @@ return (_ctx, _cache) => {
                                               }), 128))
                                             ]),
                                             _createElementVNode("div", {
-                                              class: _normalizeClass(["ss-style-preview mb-4", { 'ss-style-preview--top': stylePreview.value.stack === 'main_top' }])
+                                              ref_for: true,
+                                              ref: bindPreview,
+                                              class: _normalizeClass(["ss-style-preview mb-2", { 'ss-style-preview--top': stylePreview.value.stack === 'main_top' }])
                                             }, [
                                               _createElementVNode("div", {
                                                 class: "ss-style-preview__note",
@@ -1282,6 +1334,7 @@ return (_ctx, _cache) => {
                                                 style: _normalizeStyle({ ...stylePreview.value.main, bottom: stylePreview.value.stack === 'main_top' ? 'auto' : stylePreview.value.mainBottom, top: stylePreview.value.stack === 'main_top' ? stylePreview.value.thirdBottom : 'auto' })
                                               }, " 这是主字幕 ", 4)
                                             ], 2),
+                                            _createElementVNode("div", _hoisted_33, " 这块 16:9 是整幅画面的缩小。主字号 " + _toDisplayString(assStyle.value.sizes[0]) + " 约占高度 " + _toDisplayString(_unref(frameShare)(assStyle.value.sizes[0])) + "，底边距 " + _toDisplayString(assStyle.value.margin_v) + " 约占 " + _toDisplayString(_unref(frameShare)(assStyle.value.margin_v)) + "。成片按同一比例放大整幅画面。 ", 1),
                                             _createVNode(_component_VRow, { dense: "" }, {
                                               default: _withCtx(() => [
                                                 _createVNode(_component_VCol, {
@@ -1316,14 +1369,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_33, [
+                                                    _createElementVNode("label", _hoisted_34, [
                                                       _cache[22] || (_cache[22] = _createElementVNode("span", null, "对白颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.primary_color,
                                                         onInput: _cache[4] || (_cache[4] = $event => (setStyle({ primary_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_34)
+                                                      }, null, 40, _hoisted_35)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1333,14 +1386,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_35, [
+                                                    _createElementVNode("label", _hoisted_36, [
                                                       _cache[23] || (_cache[23] = _createElementVNode("span", null, "描边颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.outline_color,
                                                         onInput: _cache[5] || (_cache[5] = $event => (setStyle({ outline_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_36)
+                                                      }, null, 40, _hoisted_37)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1350,14 +1403,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_37, [
+                                                    _createElementVNode("label", _hoisted_38, [
                                                       _cache[24] || (_cache[24] = _createElementVNode("span", null, "顶注颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.note_color,
                                                         onInput: _cache[6] || (_cache[6] = $event => (setStyle({ note_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_38)
+                                                      }, null, 40, _hoisted_39)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1367,7 +1420,7 @@ return (_ctx, _cache) => {
                                                     _createVNode(_component_VTextField, {
                                                       "model-value": assStyle.value.sizes[0],
                                                       type: "number",
-                                                      label: "主字号",
+                                                      label: "主字号（画面坐标）",
                                                       "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => (setStyleSize(0, $event)))
                                                     }, null, 8, ["model-value"])
                                                   ]),
@@ -1454,7 +1507,7 @@ return (_ctx, _cache) => {
                                               ]),
                                               _: 1
                                             }),
-                                            _createElementVNode("div", _hoisted_39, [
+                                            _createElementVNode("div", _hoisted_40, [
                                               _createVNode(_component_VSwitch, {
                                                 "model-value": assStyle.value.bold,
                                                 label: "粗体",
@@ -1496,7 +1549,7 @@ return (_ctx, _cache) => {
                                               : _createCommentVNode("", true)
                                           ]))
                                         : _createCommentVNode("", true),
-              _createElementVNode("div", _hoisted_40, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
+              _createElementVNode("div", _hoisted_41, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
             ]))
           }), 128))
         ]))
@@ -1520,4 +1573,4 @@ return (_ctx, _cache) => {
 
 };
 
-export { _sfc_main as _, useMobileViewport as a, langLabel as l, overlayCss as o, useHostInjects as u };
+export { ASS_REFERENCE_HEIGHT as A, _sfc_main as _, useMobileViewport as a, langLabel as l, normalizeStyle as n, overlayCss as o, useHostInjects as u };

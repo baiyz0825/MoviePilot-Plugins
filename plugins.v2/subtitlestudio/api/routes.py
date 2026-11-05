@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from ..core.config_schema import FIELDS, PANES, apply_export_preset, default_config, normalize_plugin_config
 from ..core.cuegraph import render_ass
+from ..core.embedded import probe_video_resolution
 from ..core.errors import user_message
 from ..core.style import style_from_config
 from ..core.history import group_media_items
@@ -31,6 +32,7 @@ def build_api_routes(plugin) -> List[Dict[str, Any]]:
         _route("/fields", plugin.api_fields, ["GET"], "设置页字段合同"),
         _route("/media", plugin.api_list_media, ["GET"], "媒体目录"),
         _route("/media/refresh", plugin.api_refresh_media, ["POST"], "拉取整理记录"),
+        _route("/media/hide", plugin.api_hide_media, ["POST"], "从列表移除媒体"),
         _route("/jobs", plugin.api_list_jobs, ["GET"], "任务队列"),
         _route("/jobs", plugin.api_create_job, ["POST"], "入队"),
         _route("/jobs/batch", plugin.api_create_jobs, ["POST"], "批量入队"),
@@ -153,6 +155,9 @@ class StudioApiMixin:
 
     def api_list_media(self, q: str = "", media_type: str = "", force: bool = False) -> Dict[str, Any]:
         items = self.services.catalog.list_media(q=q, media_type=media_type, force=force)
+        hidden = self.services.store.hidden_paths()
+        if hidden:
+            items = [item for item in items if item.get("path") not in hidden]
         groups = group_media_items(items)
         successful_paths = self.services.store.successful_paths(
             file.get("path") for group in groups for file in group.get("files") or []
@@ -172,6 +177,28 @@ class StudioApiMixin:
     def api_refresh_media(self) -> Dict[str, Any]:
         return self.api_list_media(force=True)
 
+    def api_hide_media(self, body: Dict[str, Any] = None) -> Dict[str, Any]:
+        data = body or {}
+        paths = []
+        seen = set()
+        for raw in data.get("paths") or []:
+            path = str(raw or "").strip()
+            if not path or path in seen or not _hideable_media_path(path):
+                continue
+            seen.add(path)
+            paths.append(path)
+        if not paths:
+            return fail("没有可移除的媒体")
+        deleted: List[str] = []
+        if data.get("delete_subtitles"):
+            config = normalize_plugin_config(self.get_config() or {})
+            from ..packager.export_pack import delete_generated_subtitles
+            for path in paths:
+                deleted.extend(delete_generated_subtitles(config, path))
+        hidden = self.services.store.hide_paths(paths)
+        self.services.catalog.invalidate()
+        return ok({"hidden": hidden, "deleted_files": deleted}, "已从列表移除")
+
     def api_list_jobs(self, q: str = "", status: str = "") -> Dict[str, Any]:
         jobs = [item.to_dict() for item in self.services.store.list_jobs(q=q, status=status)]
         return ok({"items": jobs, "counts": self.services.store.counts()})
@@ -180,12 +207,15 @@ class StudioApiMixin:
         data = body or {}
         path = str(data.get("path") or "")
         config = normalize_plugin_config(self.get_config() or {})
-        ok_gate, reason = evaluate_gates(config, path, data)
         if not path:
             return fail("缺少媒体路径")
         if not _path_allowed(config, path):
             return fail("媒体路径不在允许范围内")
         force = bool(data.get("force", False))
+        overwrite = bool(data.get("overwrite"))
+        if overwrite:
+            config = {**config, "skip_existing_chinese": False}
+        _ok_gate, reason = evaluate_gates(config, path, data)
         strategy = str(data.get("strategy") or config.get("transfer_strategy") or "search_then_translate")
         if is_strm_path(path) and strategy == "translate_only":
             strategy = "search_then_translate"
@@ -202,7 +232,7 @@ class StudioApiMixin:
             priority=str(data.get("priority") or "P0"),
             strategy=strategy,
             config=config,
-            payload=data,
+            payload={**data, "overwrite": overwrite},
             force=force,
         )
         if job.status == "skipped":
@@ -224,6 +254,7 @@ class StudioApiMixin:
                 "strategy": data.get("strategy") or item.get("strategy"),
                 "priority": data.get("priority") or item.get("priority") or "P0",
                 "force": bool(data.get("force", False)),
+                "overwrite": bool(data.get("overwrite", False)),
             }
             result = self.api_create_job(payload)
             envelope = result if isinstance(result, dict) else {}
@@ -263,11 +294,12 @@ class StudioApiMixin:
             return fail("任务不存在")
         return ok(job.to_dict(), "已取消")
 
-    def api_retry_job(self, job_id: str) -> Dict[str, Any]:
-        job = self.services.scheduler.retry(job_id)
+    def api_retry_job(self, job_id: str, body: Dict[str, Any] = None) -> Dict[str, Any]:
+        overwrite = bool((body or {}).get("overwrite"))
+        job = self.services.scheduler.retry(job_id, overwrite=overwrite)
         if not job:
             return fail("任务不存在")
-        return ok(job.to_dict(), "已重新入队")
+        return ok(job.to_dict(), "已重新入队，将覆盖已有字幕" if overwrite else "已重新入队")
 
     def api_get_cues(self, job_id: str) -> Dict[str, Any]:
         graph = self.services.store.get_graph(job_id)
@@ -348,11 +380,15 @@ class StudioApiMixin:
         graph = self.services.store.get_graph(job_id)
         config = normalize_plugin_config(self.get_config() or {})
         langs = list(config.get("target_languages") or ["zh-Hans"])
+        job = self.services.store.get_job(job_id)
+        play_width, play_height = probe_video_resolution(job.path, logger=None) if job and job.path else (0, 0)
         text = render_ass(
             graph,
             langs,
             stack=config.get("lang_stack") or "main_bottom",
             style=style_from_config(config),
+            play_width=play_width,
+            play_height=play_height,
         ) if graph else ""
         return _plain_response(text, "text/plain; charset=utf-8")
 
@@ -411,6 +447,13 @@ def _restore_masked_secrets(payload: Dict[str, Any], current: Dict[str, Any]) ->
     if "openai_endpoints" in out:
         out["openai_endpoints"] = rows
     return out
+
+
+def _hideable_media_path(path: str) -> bool:
+    raw = str(path or "").strip()
+    if not raw or ".." in Path(raw).parts:
+        return False
+    return Path(raw).suffix.lower() in _MEDIA_SUFFIXES
 
 
 def _path_allowed(config: Dict[str, Any], path: str) -> bool:

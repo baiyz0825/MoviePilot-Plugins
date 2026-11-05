@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from ..core.format_repair import repair_model_batch
+from ..core.format_repair import repair_model_batch, translation_keeps_cue
 from ..core.language import canonical_language, infer_source_language
 from ..core.logging import studio_log
 from ..core.models import CueGraph, Issue
@@ -22,6 +22,7 @@ TRANSLATE_SYSTEM = (
     "你是字幕翻译器。只输出 JSON 数组，不要解释。"
     "数组元素格式：{\"id\":\"<cue_id>\",\"zh\":\"译文\"}。"
     "id 必须来自输入，不要改编号。不要把注释写进对白。"
+    "一句输入只译成一句，不要合并上下文，不要扩写成段落，不要添加原文没有的内容。"
 )
 
 
@@ -48,16 +49,20 @@ class TranslationService:
         llm: Optional[LlmFn] = None,
         logger: Any = None,
         cancel_check: Optional[Callable[[], None]] = None,
+        on_progress: Optional[Callable[[float, str], None]] = None,
     ):
         self.config = config
         self.http = http
         self.llm = llm
         self.logger = logger
         self.cancel_check = cancel_check
+        self.on_progress = on_progress
         self.mt = FreeMtRouter(http, config, logger, cancel_check=cancel_check)
         self._llm_calls = 0
         self._max_llm_calls = max(8, int(config.get("max_llm_calls_per_lang") or 120))
         self._max_repair_depth = max(1, int(config.get("max_repair_depth") or 4))
+        self._done = 0
+        self._total = 1
 
     def translate_graph(self, graph: CueGraph, target_langs: Sequence[str]) -> CueGraph:
         if not self.config.get("translate_enabled", True):
@@ -80,9 +85,25 @@ class TranslationService:
         if not targets:
             studio_log(self.logger, "info", "源语种 %s 已包含在目标语种中，跳过翻译", graph.source_lang)
             return graph
+        pending_total = 0
+        for lang in targets:
+            pending_total += sum(1 for cue in graph.sorted_cues() if not cue.text(lang))
+        self._total = max(1, pending_total)
+        self._done = 0
         for lang in targets:
             self._translate_lang(graph, lang)
         return graph
+
+    def _tick(self, count: int, lang: str, *, force: bool = False) -> None:
+        self._done = min(self._total, self._done + max(0, count))
+        if not callable(self.on_progress):
+            return
+        if not force and count < 8 and self._done % 8 != 0 and self._done != self._total:
+            return
+        try:
+            self.on_progress(self._done / self._total, f"翻译 {lang} · {self._done}/{self._total} 句")
+        except Exception as exc:  # noqa: BLE001
+            studio_log(self.logger, "warning", "翻译进度回报失败：%s", exc)
 
     def _translate_lang(self, graph: CueGraph, lang: str) -> None:
         if callable(self.cancel_check):
@@ -93,10 +114,16 @@ class TranslationService:
             return
         backend = str(self.config.get("translate_backend") or "free_first")
         studio_log(self.logger, "info", "翻译语种 %s 待译 %s 句 backend=%s", lang, len(pending), backend)
+        self._tick(0, lang, force=True)
         if backend in {"free_first", "free_only"}:
             try:
                 texts = [cue.text() for cue in pending]
-                translated = self.mt.translate_batch(texts, source=graph.source_lang, target=lang)
+                translated = self.mt.translate_batch(
+                    texts,
+                    source=graph.source_lang,
+                    target=lang,
+                    on_item=lambda: self._tick(1, lang),
+                )
                 for cue, text in zip(pending, translated):
                     if text:
                         cue.texts[lang] = text
@@ -135,6 +162,13 @@ class TranslationService:
             if total > 1 and (index == 1 or index == total or index % max(1, total // 10) == 0):
                 studio_log(self.logger, "info", "大模型翻译进度 %s/%s 批 lang=%s", index, total, lang)
             self._run_chunk(chunk, lookup, lang, context_window, partial, depth=0)
+            if str(self.config.get("translate_backend") or "") not in {"free_first", "free_only"}:
+                self._tick(len(chunk), lang, force=True)
+            elif callable(self.on_progress):
+                try:
+                    self.on_progress(self._done / self._total, f"大模型补译 {lang} · {index}/{total} 批")
+                except Exception as exc:  # noqa: BLE001
+                    studio_log(self.logger, "warning", "翻译进度回报失败：%s", exc)
 
     def _run_chunk(self, chunk, lookup, lang: str, context_window: int, partial: bool, *, depth: int) -> None:
         if callable(self.cancel_check):
@@ -154,9 +188,18 @@ class TranslationService:
                 missing = [item for item in expected if not mapped.get(item)]
             except Exception:  # noqa: BLE001
                 mapped, missing = {}, expected
+        rejected = []
         for cue_id, text in mapped.items():
-            if cue_id in lookup and text:
-                lookup[cue_id].texts[lang] = text
+            cue = lookup.get(cue_id)
+            if not cue or not text:
+                continue
+            if not translation_keeps_cue(cue.text(), text):
+                rejected.append(cue_id)
+                continue
+            cue.texts[lang] = text
+        if rejected:
+            studio_log(self.logger, "info", "译文并入了相邻句子，退回重试 %s 句", len(rejected))
+            missing = list(dict.fromkeys([*missing, *rejected]))
         if missing and len(chunk) > 1 and depth < self._max_repair_depth:
             half = max(1, len(chunk) // 2)
             self._run_chunk(chunk[:half], lookup, lang, context_window, partial, depth=depth + 1)

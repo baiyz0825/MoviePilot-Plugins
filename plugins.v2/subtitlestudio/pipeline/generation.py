@@ -55,14 +55,14 @@ class GenerationPipeline:
         self._current_job: Optional[Job] = None
 
     STAGE_MAP = {
-        0: ("init", 5, "准备中"),
-        1: ("local_sidecar", 12, "查找本地外挂"),
-        2: ("search", 25, "在线搜索"),
-        3: ("embedded", 40, "提取内嵌字幕"),
-        4: ("asr", 55, "语音识别"),
-        5: ("translate", 72, "翻译对白"),
-        6: ("effects", 86, "生成特效"),
-        7: ("export", 95, "写出导出包"),
+        0: ("init", 3, "准备中"),
+        1: ("local_sidecar", 8, "查找本地外挂"),
+        2: ("search", 18, "在线搜索字幕"),
+        3: ("embedded", 32, "提取内嵌字幕"),
+        4: ("asr", 42, "语音识别"),
+        5: ("translate", 58, "翻译对白"),
+        6: ("effects", 84, "生成特效"),
+        7: ("export", 92, "写出字幕"),
     }
 
     def _ensure_not_cancelled(self) -> None:
@@ -73,23 +73,39 @@ class GenerationPipeline:
         if latest.payload.get("cancel"):
             raise JobCancelled("任务已取消")
 
-    def _progress(self, step: int, message: str, *args) -> None:
+    def _progress(self, step: int, message: str, *args, percent: Optional[int] = None, detail: Optional[str] = None) -> None:
         self._ensure_not_cancelled()
-        studio_log(self.logger, "info", f"[Step {step}] {message}", *args)
-        stage, percent, detail = self.STAGE_MAP.get(step, ("", 0, ""))
-        if stage and self._current_job:
-            self._current_job.progress = percent
-            self._current_job.stage = stage
-            self._current_job.stage_detail = detail
-            try:
-                self.store.save_job(self._current_job)
-            except Exception as exc:  # noqa: BLE001
-                studio_log(self.logger, "warning", "进度写库失败 job=%s：%s", self._current_job.job_id, exc)
+        if message:
+            studio_log(self.logger, "info", f"[Step {step}] {message}", *args)
+        stage, mapped, fallback = self.STAGE_MAP.get(step, ("", 0, ""))
+        if not stage or not self._current_job:
+            return
+        value = mapped if percent is None else int(percent)
+        value = max(0, min(99, value))
+        if self._current_job.stage == stage and value < int(self._current_job.progress or 0):
+            value = int(self._current_job.progress or 0)
+        detail_text = fallback if detail is None else str(detail)
+        if (
+            self._current_job.progress == value
+            and self._current_job.stage == stage
+            and self._current_job.stage_detail == detail_text
+        ):
+            return
+        self._current_job.progress = value
+        self._current_job.stage = stage
+        self._current_job.stage_detail = detail_text
+        try:
+            self.store.save_job(self._current_job)
+        except Exception as exc:  # noqa: BLE001
+            studio_log(self.logger, "warning", "进度写库失败 job=%s：%s", self._current_job.job_id, exc)
 
     def run(self, job: Job) -> Job:
         started = time.monotonic()
-        config = self.config_getter() or {}
+        config = dict(self.config_getter() or {})
         latest = self.store.get_job(job.job_id) or job
+        if latest.payload.get("overwrite"):
+            config["overwrite_policy"] = "overwrite"
+            studio_log(self.logger, "info", "本次重译覆盖已有字幕 job=%s", latest.job_id)
         self._current_job = latest
         self._progress(
             0,
@@ -151,12 +167,17 @@ class GenerationPipeline:
                 graph.source_lang,
                 asr_ran,
             )
+            def _on_translate(fraction: float, text: str) -> None:
+                span = 58 + int(24 * max(0.0, min(1.0, float(fraction or 0))))
+                self._progress(5, "", percent=span, detail=text)
+
             translator = TranslationService(
                 config,
                 http=self.http,
                 llm=self.llm,
                 logger=self.logger,
                 cancel_check=self._ensure_not_cancelled,
+                on_progress=_on_translate,
             )
             if strategy != "search_only" and config.get("translate_enabled", True):
                 langs = config.get("target_languages") or ["zh-Hans"]
@@ -178,13 +199,17 @@ class GenerationPipeline:
                 self._progress(6, "生成特效顶注 title=%s", latest.title)
                 research = (lambda prompt, system="", role="research": self.llm(prompt, system=system, role=role)) if self.llm else None
                 web_search = (lambda term, title: web_research(term, title, self.http, logger=self.logger)) if self.http else None
+                def _on_effects(index: int, total: int) -> None:
+                    span = 84 + int(6 * index / max(1, total))
+                    self._progress(6, "", percent=min(90, span), detail=f"特效检索 {index}/{total} 句")
+
                 graph = EffectsBuilder(
                     config,
                     research=research,
                     web_search=web_search,
                     logger=self.logger,
                     cancel_check=self._ensure_not_cancelled,
-                ).apply(graph, title=latest.title)
+                ).apply(graph, title=latest.title, on_progress=_on_effects)
                 studio_log(self.logger, "info", "特效完成 notes=%s briefing=%s", len(graph.notes), len(graph.briefing))
             else:
                 self._progress(6, "特效关闭，跳过顶注")
@@ -192,12 +217,17 @@ class GenerationPipeline:
             self._ensure_not_cancelled()
             if latest.path:
                 self._progress(7, "写出导出包 path=%s", latest.path)
+                def _on_export(index: int, total: int, filename: str) -> None:
+                    span = 92 + int(6 * index / max(1, total))
+                    self._progress(7, "", percent=min(98, span), detail=f"写出字幕 {index}/{total} · {filename}")
+
                 written = write_export_pack(
                     config,
                     latest.path,
                     graph,
                     asr_graph=asr_graph,
                     asr_ran=asr_ran,
+                    on_file=_on_export,
                 )
                 latest.payload = {**latest.payload, "export": written, "asr_ran": asr_ran}
                 wrote_any = False
@@ -299,14 +329,25 @@ class GenerationPipeline:
         if graph is None and strategy != "search_only" and config.get("enable_asr") and not (job.is_strm or is_strm_path(job.path)):
             self._progress(4, "开始 ASR model=%s", config.get("whisper_model") or "base")
             if self.asr:
-                # 兼容旧签名 asr(job, config) 与带 cancel_check 的新签名
+                def _on_asr(done: int) -> None:
+                    span = min(56, 42 + max(0, int(done)) // 8)
+                    self._progress(4, "", percent=span, detail=f"语音识别 · 已处理 {done} 段")
+
+                # 兼容旧签名 asr(job, config) 与带 cancel_check / progress 的新签名
                 try:
-                    graph = self.asr(job, config, cancel_check=self._ensure_not_cancelled)
+                    graph = self.asr(job, config, cancel_check=self._ensure_not_cancelled, progress=_on_asr)
                 except TypeError:
-                    graph = self.asr(job, config)
+                    try:
+                        graph = self.asr(job, config, cancel_check=self._ensure_not_cancelled)
+                    except TypeError:
+                        graph = self.asr(job, config)
                 if graph and graph.cues:
                     asr_ran = True
-                    graph = repair_asr_graph(graph, enabled=bool(config.get("asr_repair_enabled", True)))
+                    graph = repair_asr_graph(
+                        graph,
+                        enabled=bool(config.get("asr_repair_enabled", True)),
+                        max_segment_seconds=float(config.get("max_segment_seconds") or 8),
+                    )
                     asr_graph = CueGraph.from_dict(graph.to_dict())
                     studio_log(self.logger, "info", "ASR 完成 cues=%s lang=%s", len(graph.cues), graph.source_lang)
                 else:
@@ -324,11 +365,12 @@ class GenerationPipeline:
         if not path.parent.is_dir():
             studio_log(self.logger, "info", "视频目录不存在，跳过本地外挂 %s", path.parent)
             return None
-        for item in sorted(path.parent.iterdir()):
-            if item.suffix.lower() not in {".srt", ".ass", ".ssa", ".vtt"}:
-                continue
-            if path.stem.lower() not in item.name.lower():
-                continue
+        sidecars = [
+            item for item in sorted(path.parent.iterdir())
+            if item.suffix.lower() in {".srt", ".ass", ".ssa", ".vtt"} and path.stem.lower() in item.name.lower()
+        ]
+        for index, item in enumerate(sidecars, start=1):
+            self._progress(1, "", percent=min(16, 8 + index), detail=f"查看本地外挂 {index}/{len(sidecars)} · {item.name}")
             try:
                 studio_log(self.logger, "info", "发现本地外挂 %s", item.name)
                 return parse_subtitle(item.read_text(encoding="utf-8", errors="ignore"), item.name, job_id=job.job_id)

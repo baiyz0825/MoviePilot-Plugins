@@ -46,7 +46,8 @@ def test_config_defaults_and_language_limit(gen: str = GEN):
     assert "notify_on" in keys
     assert cfg["send_notify"] is False
     assert cfg["notify_on"] == ["success", "failed"]
-    assert cfg["ass_style"]["sizes"] == [22, 17, 14]
+    assert cfg["ass_style"]["sizes"] == [60, 47, 38]
+    assert cfg["ass_style"]["shadow"] == 0
 
 
 def test_notify_payload_and_gating(gen: str = GEN):
@@ -99,6 +100,27 @@ def test_cuegraph_roundtrip_and_ass_styles(gen: str = GEN):
     assert ",28," in styled
     assert "&H0066E5FF" in styled
     assert styled.split("Style: Lang1,")[1].split(",")[6] == "-1"
+    style_mod = load_domain(gen, "core.style")
+    legacy = style_mod.normalize_ass_style({
+        "sizes": [22, 17, 14],
+        "note_size": 16,
+        "shadow": 2,
+        "margin_v": 20,
+        "line_gap": 28,
+    })
+    assert legacy["sizes"] == [60, 47, 38]
+    assert legacy["shadow"] == 0
+    assert style_mod.normalize_ass_style({"sizes": [90, 70, 56]})["sizes"] == [90, 70, 56]
+    wide = cuegraph.render_ass(graph, ["zh-Hans"], sizes=[60], play_width=3840, play_height=2160, style={"shadow": 0})
+    assert "PlayResX: 1920" in wide and "PlayResY: 1080" in wide
+    assert "LayoutResX: 1920" in wide and "LayoutResY: 1080" in wide
+    classic = cuegraph.render_ass(graph, ["zh-Hans"], sizes=[60], play_width=1440, play_height=1080)
+    assert "PlayResX: 1440" in classic and "PlayResY: 1080" in classic
+    wide_fields = wide.split("Style: Lang1,")[1].splitlines()[0].split(",")
+    assert wide_fields[1] == "60"
+    assert wide_fields[5].startswith("&HFF")
+    assert wide_fields[14] == "1"
+    assert wide_fields[16] == "0"
 
 
 def test_format_repair_keeps_good_sentences(gen: str = GEN):
@@ -126,6 +148,43 @@ def test_asr_repair_drops_empty_and_fixes_overlap(gen: str = GEN):
     texts = [item.text() for item in repaired.cues]
     assert "嗯" not in texts
     assert repaired.cues[0].end_ms >= repaired.cues[0].start_ms
+
+
+def test_asr_repair_splits_paragraph_on_sentences(gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    repair = load_domain(gen, "core.format_repair")
+    graph = models.CueGraph(
+        job_id="j",
+        cues=[
+            models.Cue(
+                cue_id="1",
+                index=1,
+                start_ms=0,
+                end_ms=20000,
+                texts={"en": "Hello there. How are you? I waited a long time."},
+                kind="asr",
+            ),
+            models.Cue(cue_id="2", index=2, start_ms=21000, end_ms=23000, texts={"en": "Hello."}, kind="asr"),
+        ],
+    )
+    repaired = repair.repair_asr_graph(graph, max_segment_seconds=8)
+    texts = [item.text() for item in repaired.cues]
+    assert texts[:3] == ["Hello there.", "How are you?", "I waited a long time."]
+    assert texts[-1] == "Hello."
+    assert repaired.cues[0].start_ms == 0
+    assert repaired.cues[2].end_ms == 20000
+    assert repaired.cues[1].start_ms >= repaired.cues[0].end_ms
+    words = repair.cues_from_words([
+        {"text": " Hello", "start_ms": 0, "end_ms": 400},
+        {"text": " there.", "start_ms": 420, "end_ms": 900},
+        {"text": " Okay", "start_ms": 2000, "end_ms": 2500},
+    ], max_segment_ms=8000)
+    assert [item["text"] for item in words] == ["Hello there.", "Okay"]
+    assert words[0]["end_ms"] == 900
+    assert words[1]["start_ms"] == 2000
+    assert repair.translation_keeps_cue("Hello.", "你好。") is True
+    long = "你好啊朋友。今天天气真的很不错，我们准备出发去海边。路上请一定要小心。到了之后记得再联系我。晚上见。"
+    assert repair.translation_keeps_cue("Hello.", long) is False
 
 
 def test_export_plan_cartesian_and_extras(gen: str = GEN):
@@ -232,3 +291,40 @@ def test_packager_writes_and_skip_policy(tmp_path: Path, gen: str = GEN):
     )
     assert written[0]["written"] is True
     assert "你好" in existing.read_text(encoding="utf-8")
+
+
+def test_delete_generated_subtitles_leaves_source_and_video(tmp_path: Path, gen: str = GEN):
+    packager = load_domain(gen, "packager.export_pack")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    config = {
+        "export_preset": "library_zh",
+        "target_languages": ["zh-Hans"],
+        "export_layouts": ["mono"],
+        "export_formats": ["srt"],
+        "mark_default": False,
+    }
+    names = [item["filename"] for item in packager.build_export_manifest(config, str(video))]
+    generated = tmp_path / names[0]
+    generated.write_text("new", encoding="utf-8")
+    backup = generated.with_suffix(generated.suffix + ".bak")
+    backup.write_text("bak", encoding="utf-8")
+    source = tmp_path / "Movie.en.srt"
+    source.write_text("hello", encoding="utf-8")
+    deleted = packager.delete_generated_subtitles(config, str(video))
+    assert generated.name in deleted
+    assert backup.name in deleted
+    assert not generated.exists()
+    assert not backup.exists()
+    assert source.read_text(encoding="utf-8") == "hello"
+    assert video.exists()
+    assert packager.delete_generated_subtitles(config, str(video)) == []
+
+
+def test_hidden_media_paths_roundtrip(tmp_path: Path, gen: str = GEN):
+    store_mod = load_domain(gen, "storage.job_store")
+    store = store_mod.JobStore(tmp_path, "SubtitleStudio")
+    assert store.hide_paths(["/media/a.mkv", "/media/a.mkv", ""]) == 1
+    assert store.hidden_paths() == {"/media/a.mkv"}
+    assert store.hide_paths(["/media/b.mkv"]) == 1
+    assert store.hidden_paths() == {"/media/a.mkv", "/media/b.mkv"}

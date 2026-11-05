@@ -10,7 +10,7 @@ import re
 from typing import Any, Dict, Iterable, List, Sequence
 
 from .models import Cue, CueGraph, LANG_FONT_SIZES
-from .style import ass_style_line, normalize_ass_style, style_sizes
+from .style import REFERENCE_PLAY_HEIGHT, ass_style_line, normalize_ass_style, style_sizes
 
 SRT_BLOCK = re.compile(
     r"(\d+)\s*\n(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*\n([\s\S]*?)(?=\n\n|\Z)",
@@ -198,6 +198,21 @@ def render_vtt(graph: CueGraph, lang: str, *, fallback_lang: str = "") -> str:
     return "\n".join(lines)
 
 
+def script_resolution(display_width: int = 0, display_height: int = 0) -> tuple:
+    """虚拟画面，高度固定 1080，宽度跟成片显示比例走。
+
+    Aegisub 的 Script Resolution：字号和边距是这块画面上的坐标，
+    不是显示器像素。比例必须和视频一致，16:9 才是 1920×1080。
+    """
+    height = REFERENCE_PLAY_HEIGHT
+    width = int(display_width or 0)
+    frame_height = int(display_height or 0)
+    if width < 16 or frame_height < 16:
+        return 1920, height
+    play_x = max(16, int(round(height * width / frame_height)))
+    return play_x, height
+
+
 def render_ass(
     graph: CueGraph,
     langs: Sequence[str],
@@ -207,24 +222,64 @@ def render_ass(
     include_notes: bool = True,
     title: str = "SubtitleStudio",
     style: Dict[str, Any] | None = None,
+    play_width: int = 1920,
+    play_height: int = 1080,
 ) -> str:
-    """现场打包预览 / 导出 ASS。叠行用 Lang1/Lang2/Lang3 独立 Style，避免抢 Default。"""
+    """现场打包预览 / 导出 ASS。
+
+    PlayRes 是整幅虚拟画面，不是把字号锁死在 1080 显示器上。
+    字号、边距保持用户填的画面坐标；libass 再把整幅画面缩放到成片。
+    LayoutRes 与 PlayRes 相同，这样 720p / 4K 不用各写一套像素。
+    """
     spec = normalize_ass_style(style)
+    width, height = script_resolution(play_width, play_height)
     used_langs = [item for item in langs if item] or ["source"]
     used_sizes = list(sizes or style_sizes(spec, len(used_langs)) or LANG_FONT_SIZES[: len(used_langs)])
+    scaled_sizes = [max(8, int(size)) for size in used_sizes]
+    outline_px = max(0, int(spec["outline"]))
+    shadow_px = max(0, int(spec["shadow"]))
+    margin_v = max(0, int(spec["margin_v"]))
+    gap = max(1, int(spec["line_gap"]))
+    note_size = max(8, int(spec["note_size"]))
     styles = [
-        ass_style_line("Default", spec, size=used_sizes[0], color=spec["primary_color"], alignment=2, margin_v=spec["margin_v"])
+        ass_style_line(
+            "Default",
+            spec,
+            size=scaled_sizes[0],
+            color=spec["primary_color"],
+            alignment=2,
+            margin_v=margin_v,
+            outline_px=outline_px,
+            shadow_px=shadow_px,
+        )
     ]
-    for index, size in enumerate(used_sizes, start=1):
+    for index, size in enumerate(scaled_sizes, start=1):
         # 叠行同侧对齐：main_bottom 全底部（主在下，副递增在上方），main_top 全顶部（主在上，副递增在下方）
         alignment = 2 if stack == "main_bottom" else 8
-        gap = spec["line_gap"]
-        margin_v = spec["margin_v"] + (index - 1) * gap
+        line_margin = margin_v + (index - 1) * gap
         styles.append(
-            ass_style_line(f"Lang{index}", spec, size=size, color=spec["primary_color"], alignment=alignment, margin_v=margin_v)
+            ass_style_line(
+                f"Lang{index}",
+                spec,
+                size=size,
+                color=spec["primary_color"],
+                alignment=alignment,
+                margin_v=line_margin,
+                outline_px=outline_px,
+                shadow_px=shadow_px,
+            )
         )
     styles.append(
-        ass_style_line("Note", spec, size=spec["note_size"], color=spec["note_color"], alignment=8, margin_v=max(16, spec["margin_v"]))
+        ass_style_line(
+            "Note",
+            spec,
+            size=note_size,
+            color=spec["note_color"],
+            alignment=8,
+            margin_v=max(16, margin_v),
+            outline_px=outline_px,
+            shadow_px=shadow_px,
+        )
     )
     events = ["Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for cue in graph.sorted_cues():
@@ -253,8 +308,10 @@ def render_ass(
         "ScriptType: v4.00+",
         "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
-        "PlayResX: 1920",
-        "PlayResY: 1080",
+        f"PlayResX: {width}",
+        f"PlayResY: {height}",
+        f"LayoutResX: {width}",
+        f"LayoutResY: {height}",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "

@@ -97,18 +97,16 @@
   right: 0;
   text-align: center;
   pointer-events: none;
-  text-shadow: 0 1px 4px #000;
+  background: transparent;
   padding: 0 12px;
 }
 
-.plugin-root .ss-overlay.dialogue { bottom: 18px; font-size: 22px; }
-.plugin-root .ss-overlay.dialogue.rank2 { bottom: 48px; font-size: 17px; }
-.plugin-root .ss-overlay.dialogue.rank3 { bottom: 72px; font-size: 14px; }
-.plugin-root .ss-overlay.note { top: 16px; font-size: 16px; color: #b4e0ff; }
+.plugin-root .ss-overlay.note { color: #b4e0ff; }
 
 .plugin-root .ss-style-preview {
   position: relative;
-  min-height: 180px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
   background:
@@ -123,11 +121,6 @@
   right: 12px;
   text-align: center;
   pointer-events: none;
-  line-height: 1.25;
-}
-
-.plugin-root .ss-style-preview__note {
-  top: 16px;
 }
 
 .plugin-root .ss-color-field {

@@ -51,7 +51,10 @@ const config = ref({})
 const fields = ref([])
 const modelPicker = ref({ open: false, endpointId: '', items: [] })
 const enqueueSheet = ref(false)
-const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: false, items: [] })
+const enqueueForm = reactive({ strategy: 'search_then_translate', priority: 'P0', force: false, overwrite: false, items: [] })
+const hideSheet = ref(false)
+const hiding = ref(false)
+const hideForm = reactive({ paths: [], title: '', deleteSubtitles: false })
 const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(item => selectedPaths.value[item.path]))
 const enqueueHasStrm = computed(() => (enqueueForm.items || []).some(item => item?.is_strm || String(item?.path || '').toLowerCase().endsWith('.strm')))
 
@@ -237,7 +240,7 @@ async function loadJobs() {
   }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   if (jobs.value.some(j => j.status === 'running' || j.status === 'pending')) {
-    pollTimer = setInterval(() => { loadJobs() }, 3000)
+    pollTimer = setInterval(() => { loadJobs() }, 1500)
   }
 }
 
@@ -270,16 +273,22 @@ async function loadPreview(job) {
   }
 }
 
+function prepareEnqueue(items) {
+  enqueueForm.items = items
+  enqueueForm.force = false
+  enqueueForm.overwrite = items.some(item => item.already_processed)
+  enqueueSheet.value = true
+}
+
 async function enqueue(item) {
-  enqueueForm.items = item?.path ? [item] : selectedFiles.value
-  enqueueForm.path = item?.path || enqueueForm.items[0]?.path
+  const items = item?.path ? [item] : selectedFiles.value
+  enqueueForm.path = item?.path || items[0]?.path
   enqueueForm.title = item?.title || mediaDetail.value?.title
   enqueueForm.media_source = item?.media_source
   enqueueForm.media_id = item?.media_id
   enqueueForm.tmdbid = item?.tmdbid
   enqueueForm.doubanid = item?.doubanid
-  enqueueForm.force = false
-  enqueueSheet.value = true
+  prepareEnqueue(items)
 }
 
 async function submitSelected() {
@@ -289,9 +298,7 @@ async function submitSelected() {
   }
   const completedCount = selectedFiles.value.filter(item => item.already_processed).length
   if (completedCount && !(await confirm(`${completedCount} 个文件已有成功处理记录。再次提交会重新执行并消耗模型资源，仍要继续吗？`))) return
-  enqueueForm.items = selectedFiles.value
-  enqueueForm.force = false
-  enqueueSheet.value = true
+  prepareEnqueue(selectedFiles.value)
 }
 
 async function confirmEnqueue() {
@@ -303,6 +310,7 @@ async function confirmEnqueue() {
       strategy: enqueueForm.strategy,
       priority: enqueueForm.priority,
       force: enqueueForm.force,
+      overwrite: enqueueForm.overwrite,
     })
     const created = data?.count || data?.items?.length || 0
     const skipped = data?.skipped?.length || 0
@@ -364,10 +372,45 @@ async function cancelJob(job) {
   }
 }
 
-async function retryJob(job) {
+function askHide(paths, title) {
+  const list = [...new Set((paths || []).filter(Boolean))]
+  if (!list.length) {
+    toast.error?.('先勾选要从列表移除的文件')
+    return
+  }
+  hideForm.paths = list
+  hideForm.title = title || ''
+  hideForm.deleteSubtitles = false
+  hideSheet.value = true
+}
+
+async function confirmHide() {
+  hiding.value = true
   try {
-    await pluginApi.value.retry(job.job_id)
-    toast.success?.('已重新入队')
+    const data = await pluginApi.value.hideMedia({
+      paths: hideForm.paths,
+      delete_subtitles: hideForm.deleteSubtitles,
+    })
+    const removed = data?.deleted_files?.length || 0
+    toast.success?.(hideForm.deleteSubtitles ? `已从列表移除，并删除 ${removed} 个字幕文件` : '已从列表移除')
+    hideSheet.value = false
+    if (mediaDetail.value) {
+      const gone = new Set(hideForm.paths)
+      const files = (mediaDetail.value.files || []).filter(item => !gone.has(item.path))
+      mediaDetail.value = files.length ? { ...mediaDetail.value, files, file_count: files.length } : null
+    }
+    await loadMedia()
+  } catch (error) {
+    toast.error?.(error?.message || '移除失败')
+  } finally {
+    hiding.value = false
+  }
+}
+
+async function retryJob(job, overwrite = false) {
+  try {
+    await pluginApi.value.retry(job.job_id, { overwrite: !!overwrite })
+    toast.success?.(overwrite ? '已重新入队，将覆盖已有字幕' : '已重新入队')
     jobSheet.value = false
     nav.value = 'jobs'
     await loadJobs()
@@ -514,6 +557,7 @@ defineExpose({ reload, loadStatus: reload })
           <div class="d-flex ga-2 mb-3">
             <VBtn size="small" variant="text" class="ss-touch" @click="toggleAll(true)">全选</VBtn>
             <VBtn size="small" variant="text" class="ss-touch" @click="toggleAll(false)">清空</VBtn>
+            <VBtn size="small" variant="text" class="ss-touch" :disabled="!selectedFiles.length" @click="askHide(selectedFiles.map(item => item.path), mediaDetail.title)">移除所选</VBtn>
           </div>
           <VList>
             <VListItem v-for="item in mediaDetail.files || []" :key="item.id || item.path">
@@ -526,6 +570,9 @@ defineExpose({ reload, loadStatus: reload })
               </template>
               <VListItemTitle>{{ fileLabel(item) }}</VListItemTitle>
               <VListItemSubtitle>{{ item.sidecars?.length || 0 }} 条外挂{{ item.is_strm ? ' · STRM' : '' }}{{ item.already_processed ? ' · 已成功处理' : '' }}</VListItemSubtitle>
+              <template #append>
+                <VBtn icon="mdi-close" class="ss-touch" aria-label="从列表移除" @click.stop="askHide([item.path], fileLabel(item))" />
+              </template>
             </VListItem>
           </VList>
           <VBtn color="primary" block class="ss-touch mt-3" :disabled="!selectedFiles.length" @click="submitSelected">
@@ -573,7 +620,10 @@ defineExpose({ reload, loadStatus: reload })
                 {{ item.type === 'tv' ? '剧集' : '电影' }} · {{ item.file_count || item.files?.length || 0 }} 个文件 · {{ item.library_name }}
                 <template v-if="item.processed_count"> · 已处理 {{ item.processed_count }}/{{ item.file_count || item.files?.length || 0 }}</template>
               </VListItemSubtitle>
-              <template #append><VIcon icon="mdi-chevron-right" /></template>
+              <template #append>
+                <VBtn icon="mdi-close" class="ss-touch" aria-label="从列表移除" @click.stop="askHide((item.files || []).map(file => file.path), item.title)" />
+                <VIcon icon="mdi-chevron-right" />
+              </template>
             </VListItem>
           </VList>
         </template>
@@ -606,6 +656,7 @@ defineExpose({ reload, loadStatus: reload })
             </div>
             <template #append>
               <VBtn v-if="!isMobile && job.status === 'pending'" size="small" class="ss-touch" @click.stop="cutIn(job)">插队</VBtn>
+              <VBtn v-if="!isMobile && job.status === 'success'" size="small" class="ss-touch" @click.stop="retryJob(job, true)">覆盖重译</VBtn>
               <VBtn v-if="!isMobile && (job.status === 'failed' || job.status === 'cancelled')" size="small" class="ss-touch" @click.stop="retryJob(job)">重跑</VBtn>
               <VBtn v-if="!isMobile" size="small" variant="text" class="ss-touch" @click.stop="openJob(job)">工作台</VBtn>
               <VBtn icon="mdi-dots-horizontal" class="ss-touch" aria-label="更多" @click.stop="moreJob(job)" />
@@ -687,6 +738,7 @@ defineExpose({ reload, loadStatus: reload })
         <VList>
           <VListItem v-if="activeJob?.job_id" title="打开工作台" @click="openJob(activeJob); jobSheet = false" />
           <VListItem v-if="activeJob?.status === 'pending'" title="插队" @click="cutIn(activeJob); jobSheet = false" />
+          <VListItem v-if="activeJob?.status === 'success'" title="再次翻译并覆盖字幕" @click="retryJob(activeJob, true)" />
           <VListItem v-if="activeJob?.status === 'failed' || activeJob?.status === 'cancelled' || activeJob?.status === 'skipped'" title="重跑" @click="retryJob(activeJob)" />
           <VListItem v-if="activeJob?.job_id" title="重新搜索" @click="searchAgain(activeJob); jobSheet = false" />
           <VListItem title="改成 P0" @click="changePriority(activeJob, 'P0'); jobSheet = false" />
@@ -707,15 +759,29 @@ defineExpose({ reload, loadStatus: reload })
           variant="tonal"
           class="mb-3"
         >
-          所选文件中包含已成功处理的记录。若要忽略“已有中字”等入队门禁，请显式开启强制入队。
+          所选里有已经翻译过的文件。覆盖开关打开时，这次会直接替换已生成的字幕。
         </VAlert>
         <VAlert v-if="enqueueHasStrm" type="warning" variant="tonal" class="mb-3">
           勾选里含 STRM：只搜外挂 / 翻译 / 导出，不做 ASR 和调轴。
         </VAlert>
         <VSelect v-model="enqueueForm.strategy" label="本次策略" :items="strategyItems" />
         <VSelect v-model="enqueueForm.priority" label="优先级" :items="['P0', 'P1', 'P2']" />
+        <VSwitch v-model="enqueueForm.overwrite" label="再次翻译时覆盖已有字幕" hide-details class="mb-1" />
+        <div class="text-caption text-medium-emphasis mb-2">打开后这次直接替换目标字幕，不再受设置里「跳过已有文件」的影响。已有中字也不会拦住这次入队。</div>
         <VSwitch v-model="enqueueForm.force" label="强制入队（忽略已有中字等门禁）" hide-details class="mb-2" />
         <VBtn color="primary" block class="ss-touch mt-2" :loading="submitting" @click="confirmEnqueue">确认提交</VBtn>
+      </VCard>
+    </VBottomSheet>
+
+    <VBottomSheet v-model="hideSheet" inset rounded="t-xl">
+      <VCard class="pa-4">
+        <VCardTitle>从列表移除</VCardTitle>
+        <div class="text-medium-emphasis mb-3">
+          {{ hideForm.title ? `${hideForm.title} · ` : '' }}{{ hideForm.paths.length }} 个文件。只从字幕工坊的媒体列表里隐藏，不会删除视频，也不会改 MoviePilot 的整理记录。
+        </div>
+        <VSwitch v-model="hideForm.deleteSubtitles" label="同时删除已生成的字幕文件" hide-details class="mb-1" />
+        <div class="text-caption text-medium-emphasis mb-3">默认不删文件。勾选后只删除本插件按当前导出设置写出的字幕和备份，原片和其他外挂会留下。</div>
+        <VBtn color="primary" block class="ss-touch" :loading="hiding" @click="confirmHide">确认移除</VBtn>
       </VCard>
     </VBottomSheet>
 

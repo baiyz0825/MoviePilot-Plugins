@@ -157,51 +157,135 @@ def looks_empty_or_hallucination(text: str) -> bool:
     return bool(HALLUCINATION.match(str(text or "").strip()))
 
 
-def chinese_cps_limit(duration_ms: int) -> int:
-    # 中文阅读大约 9–11 字/秒，这里取 10，且最多两行约 32 字。
-    seconds = max(0.4, duration_ms / 1000)
-    return max(8, min(32, int(seconds * 10)))
+_ABBREV = re.compile(r"(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\.$", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"[.!?。！？…]$")
+_SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?])\s*|(?<=\.)\s+(?=[A-Z])")
+_CLAUSE_SPLIT = re.compile(r"(?<=[，,、；;])\s*")
+_PAUSE_MS = 400
 
 
-def english_cps_limit(duration_ms: int) -> int:
-    seconds = max(0.4, duration_ms / 1000)
-    return max(12, min(84, int(seconds * 17)))
+def ends_sentence(text: str) -> bool:
+    body = str(text or "").strip().strip("\"'”’」』")
+    if not body or _ABBREV.search(body):
+        return False
+    return bool(_SENTENCE_END.search(body))
 
 
-def split_by_cps(text: str, duration_ms: int, lang: str) -> List[str]:
-    limit = chinese_cps_limit(duration_ms) if _looks_cjk(text or lang) else english_cps_limit(duration_ms)
+def split_sentences(text: str) -> List[str]:
+    """按句号切开。英文缩写和小数不在这里处理，中文句号后面可以没有空格。"""
     body = str(text or "").strip()
-    if len(body) <= limit:
-        return [body] if body else []
-    chunks = []
-    remaining = body
-    while remaining:
-        if len(remaining) <= limit:
-            chunks.append(remaining)
+    if not body:
+        return []
+    parts = [item.strip() for item in _SENTENCE_SPLIT.split(body) if item and item.strip()]
+    return parts or [body]
+
+
+def _split_clauses(text: str) -> List[str]:
+    parts = [item.strip() for item in _CLAUSE_SPLIT.split(str(text or "")) if item and item.strip()]
+    return parts if len(parts) > 1 else [str(text or "").strip()]
+
+
+def translation_keeps_cue(source: str, translated: str) -> bool:
+    """一句原文只能落成一句译文。把上下文并进来的长段丢掉，留给更小的批次重试。"""
+    src = str(source or "").strip()
+    dst = str(translated or "").strip()
+    if not dst:
+        return False
+    src_breaks = len(re.findall(r"[.!?。！？]", src))
+    dst_breaks = len(re.findall(r"[.!?。！？]", dst))
+    if dst_breaks >= src_breaks + 2 and len(dst) > max(48, len(src) * 2):
+        return False
+    return True
+
+
+def cues_from_words(words: Sequence[Dict[str, Any]], *, max_segment_ms: int) -> List[Dict[str, Any]]:
+    """按停顿和句号把词收成字幕。一段不超过 max_segment_ms。"""
+    rows = [item for item in words if str(item.get("text") or "").strip()]
+    if not rows:
+        return []
+    limit = max(1000, int(max_segment_ms or 8000))
+    groups: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            groups.append(current)
+            current = []
+
+    for word in rows:
+        if current:
+            gap = int(word.get("start_ms") or 0) - int(current[-1].get("end_ms") or 0)
+            duration = int(word.get("end_ms") or 0) - int(current[0].get("start_ms") or 0)
+            previous = "".join(str(item.get("text") or "") for item in current).strip()
+            if gap >= _PAUSE_MS or ends_sentence(previous) or duration > limit:
+                flush()
+        current.append(word)
+    flush()
+    cues = []
+    for group in groups:
+        text = "".join(str(item.get("text") or "") for item in group).strip()
+        if not text:
+            continue
+        cues.append({
+            "start_ms": int(group[0].get("start_ms") or 0),
+            "end_ms": max(int(group[-1].get("end_ms") or 0), int(group[0].get("start_ms") or 0)),
+            "text": text,
+        })
+    return cues
+
+
+def _allocate_spans(start: int, end: int, weights: Sequence[int]) -> List[Tuple[int, int]]:
+    start = int(start)
+    end = max(start, int(end))
+    usable = [max(1, int(weight)) for weight in weights]
+    total = sum(usable) or 1
+    cursor = start
+    spans: List[Tuple[int, int]] = []
+    for index, weight in enumerate(usable):
+        if index == len(usable) - 1:
+            spans.append((cursor, end))
             break
-        cut = remaining.rfind("，", 0, limit) if _looks_cjk(remaining) else remaining.rfind(" ", 0, limit)
-        if cut < max(4, limit // 3):
-            cut = limit
-        chunks.append(remaining[:cut].strip())
-        remaining = remaining[cut:].strip(" ，,")
-        if len(chunks) >= 2:
-            if remaining:
-                chunks[-1] = (chunks[-1] + (" " if not _looks_cjk(chunks[-1]) else "") + remaining).strip()
-            break
-    return [item for item in chunks if item]
+        piece = max(1, int(round((end - start) * weight / total)))
+        next_cursor = min(end, cursor + piece)
+        if next_cursor <= cursor:
+            next_cursor = min(end, cursor + 1)
+        spans.append((cursor, next_cursor))
+        cursor = next_cursor
+    return spans
 
 
-def _looks_cjk(text: str) -> bool:
-    return bool(re.search(r"[\u3400-\u9fff]", text or ""))
+def _split_cue_pieces(cue: Cue, max_segment_ms: int) -> List[Tuple[int, int, str]]:
+    """没有词时间时，按句号（过长再按逗号）把一条字幕拆回多句，时间按字数分。"""
+    text = cue.text().strip()
+    if not text or len(cue.texts) > 1:
+        return [(cue.start_ms, cue.end_ms, text)] if text else []
+    parts = split_sentences(text)
+    limit = max(1000, int(max_segment_ms or 8000))
+    if len(parts) == 1 and cue.duration_ms() > limit:
+        parts = _split_clauses(text)
+    if len(parts) <= 1:
+        return [(cue.start_ms, cue.end_ms, text)]
+    spans = _allocate_spans(cue.start_ms, cue.end_ms, [len(part) for part in parts])
+    pieces: List[Tuple[int, int, str]] = []
+    for (start, end), part in zip(spans, parts):
+        clauses = _split_clauses(part) if end - start > limit else [part]
+        if len(clauses) <= 1:
+            pieces.append((start, end, part))
+            continue
+        for (sub_start, sub_end), clause in zip(_allocate_spans(start, end, [len(item) for item in clauses]), clauses):
+            pieces.append((sub_start, sub_end, clause))
+    return [(start, end, part) for start, end, part in pieces if part]
 
 
-def repair_asr_graph(graph: CueGraph, *, enabled: bool = True) -> CueGraph:
+def repair_asr_graph(graph: CueGraph, *, enabled: bool = True, max_segment_seconds: float = 8) -> CueGraph:
     """丢掉空句/幻觉，重叠裁开，倒序对调，过长按 CPS 切开。"""
     if not enabled:
         return graph
     repaired: List[Cue] = []
     last_end = 0
     next_index = 1
+    max_segment_ms = int(max(1, float(max_segment_seconds or 8)) * 1000)
     for cue in graph.sorted_cues():
         text = cue.text()
         if looks_empty_or_hallucination(text):
@@ -218,23 +302,23 @@ def repair_asr_graph(graph: CueGraph, *, enabled: bool = True) -> CueGraph:
             end_ms = start_ms + 400
         cue.start_ms = start_ms
         cue.end_ms = end_ms
-        pieces = split_by_cps(text, cue.duration_ms(), cue.text())
+        pieces = _split_cue_pieces(cue, max_segment_ms)
         if len(pieces) <= 1:
             cue.index = next_index
             next_index += 1
             repaired.append(cue)
             last_end = cue.end_ms
             continue
-        span = max(400, cue.duration_ms() // len(pieces))
-        for offset, piece in enumerate(pieces):
+        source_key = next(iter(cue.texts), "source")
+        for offset, (piece_start, piece_end, piece) in enumerate(pieces):
             child = Cue(
                 cue_id=f"{cue.cue_id}-p{offset + 1}",
                 index=next_index,
-                start_ms=cue.start_ms + offset * span,
-                end_ms=cue.start_ms + (offset + 1) * span if offset + 1 < len(pieces) else cue.end_ms,
-                texts={key: piece if key == next(iter(cue.texts), "source") else piece for key in (cue.texts or {"source": piece})},
+                start_ms=piece_start,
+                end_ms=piece_end if piece_end > piece_start else min(cue.end_ms, piece_start + 200),
+                texts={source_key: piece},
                 kind=cue.kind,
-                issues=list(cue.issues) + [Issue(code="asr_split", message="过长句已按 CPS 切开", cue_id=cue.cue_id)],
+                issues=list(cue.issues) + [Issue(code="asr_split", message="按说话停顿或句号切开", cue_id=cue.cue_id)],
             )
             next_index += 1
             repaired.append(child)

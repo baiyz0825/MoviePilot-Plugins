@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { overlayCss } from '../../composables/fields'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ASS_REFERENCE_HEIGHT, normalizeStyle, overlayCss } from '../../composables/fields'
 
 const props = defineProps({
   graph: { type: Object, default: () => ({ cues: [], notes: [] }) },
@@ -14,6 +14,42 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['time'])
+
+const root = ref(null)
+const frameHeight = ref(0)
+let observer
+
+function pictureNode() {
+  return root.value?.querySelector('video, .ss-board') || root.value
+}
+
+function measure() {
+  frameHeight.value = pictureNode()?.clientHeight || 0
+}
+
+function watchPicture() {
+  observer?.disconnect()
+  observer = null
+  const node = pictureNode()
+  if (!node || typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver(() => measure())
+  observer.observe(node)
+  measure()
+}
+
+onMounted(() => watchPicture())
+
+watch(() => props.videoUrl, async () => {
+  await nextTick()
+  watchPicture()
+})
+
+onBeforeUnmount(() => observer?.disconnect())
+
+const fontScale = computed(() => {
+  const height = frameHeight.value || root.value?.clientHeight || 0
+  return (height > 0 ? height : 180) / ASS_REFERENCE_HEIGHT
+})
 
 const active = computed(() => {
   const cues = [...(props.graph?.cues || []), ...(props.graph?.notes || [])]
@@ -40,12 +76,17 @@ function stackedText(cue) {
 }
 
 function lineStyle(index, kind = 'dialogue') {
-  const css = overlayCss(props.styleConfig, index, kind)
-  if (kind === 'note') return css
-  if (props.stack === 'main_top') {
-    return { ...css, top: `${18 + index * 30}px`, bottom: 'auto', whiteSpace: 'pre-line' }
+  const css = overlayCss(props.styleConfig, index, kind, fontScale.value)
+  const spec = normalizeStyle(props.styleConfig)
+  const margin = Math.round(spec.margin_v * fontScale.value)
+  const gap = Math.round(spec.line_gap * fontScale.value)
+  if (kind === 'note') {
+    return { ...css, top: `${Math.max(8, margin)}px`, bottom: 'auto' }
   }
-  return { ...css, whiteSpace: 'pre-line' }
+  if (props.stack === 'main_top') {
+    return { ...css, top: `${margin + index * gap}px`, bottom: 'auto', whiteSpace: 'pre-line' }
+  }
+  return { ...css, bottom: `${margin + index * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
 }
 
 function onTime(event) {
@@ -54,8 +95,8 @@ function onTime(event) {
 </script>
 
 <template>
-  <div v-if="enabled" class="ss-player">
-    <video v-if="videoUrl" :src="videoUrl" controls playsinline @timeupdate="onTime" />
+  <div v-if="enabled" ref="root" class="ss-player">
+    <video v-if="videoUrl" :src="videoUrl" controls playsinline @loadedmetadata="measure" @timeupdate="onTime" />
     <div v-else class="ss-board pa-6 text-center">
       <div class="text-medium-emphasis">字幕黑板 · 当前没有可播原片（STRM 或需重新打开任务拉取预览）</div>
     </div>
