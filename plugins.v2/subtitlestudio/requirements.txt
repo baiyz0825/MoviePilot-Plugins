@@ -6,3 +6,4 @@ openai>=2.0.0
 cacheout>=0.14.0
 rarfile>=4.2
 numpy>=1.26.0
+ffsubsync>=0.5.1,<0.6

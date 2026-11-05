@@ -45,14 +45,20 @@ def clear_whisper_cache() -> None:
 
 def _segment_words(segment: Any) -> list:
     rows = []
+    segment_start = float(getattr(segment, "start", 0) or 0)
+    segment_end = float(getattr(segment, "end", 0) or 0)
     for word in getattr(segment, "words", None) or []:
         text = str(getattr(word, "word", "") or "")
         if not text.strip():
             continue
+        start = getattr(word, "start", None)
+        end = getattr(word, "end", None)
+        if start is None or end is None or not (segment_start <= float(start) < float(end) <= segment_end + 0.25):
+            continue
         rows.append({
             "text": text,
-            "start_ms": int(float(getattr(word, "start", 0) or 0) * 1000),
-            "end_ms": int(float(getattr(word, "end", 0) or 0) * 1000),
+            "start_ms": int(float(start) * 1000),
+            "end_ms": int(float(end) * 1000),
         })
     return rows
 

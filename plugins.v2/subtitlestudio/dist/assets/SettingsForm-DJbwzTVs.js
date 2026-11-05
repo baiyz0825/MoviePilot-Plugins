@@ -351,6 +351,10 @@ function setField(key, value) {
 }
 
 function toggleList(key, value) {
+  if (key === 'export_layouts') {
+    setField(key, [value]);
+    return
+  }
   const current = [...(config.value[key] || [])];
   const index = current.indexOf(value);
   if (index >= 0) {
@@ -592,6 +596,7 @@ function fallbackFields() {
     { pane: 'quality', key: 'repair_partial_accept', label: '好句先收下', control: 'switch' },
     { pane: 'quality', key: 'abort_on_high_failure', label: '失败率过高则整片不写', control: 'switch' },
     { pane: 'quality', key: 'write_failure_placeholder', label: '失败句写入「[翻译失败]」', control: 'switch' },
+    { pane: 'queue', key: 'timeline_auto_align', label: '按音频自动校对时间轴', control: 'switch' },
     { pane: 'queue', key: 'preview_enabled', label: '工作台在线预览', control: 'switch' },
     { pane: 'queue', key: 'preview_source', label: '预览画面来源', control: 'select', options: [
       { title: '本地文件优先', value: 'local_first' }, { title: '媒体服务器', value: 'mediaserver' }, { title: '仅字幕黑板', value: 'blackboard' },
@@ -1319,19 +1324,19 @@ return (_ctx, _cache) => {
                                                 ? (_openBlock(), _createElementBlock("div", {
                                                     key: 0,
                                                     class: "ss-style-preview__line",
-                                                    style: _normalizeStyle({ ...stylePreview.value.third, bottom: stylePreview.value.stack === 'main_top' ? 'auto' : stylePreview.value.thirdBottom, top: stylePreview.value.stack === 'main_top' ? stylePreview.value.mainBottom : 'auto' })
+                                                    style: _normalizeStyle({ ...stylePreview.value.third, bottom: stylePreview.value.stack === 'main_top' ? stylePreview.value.mainBottom : stylePreview.value.thirdBottom })
                                                   }, " 三语小字 ", 4))
                                                 : _createCommentVNode("", true),
                                               (stylePreview.value.langs[1])
                                                 ? (_openBlock(), _createElementBlock("div", {
                                                     key: 1,
                                                     class: "ss-style-preview__line",
-                                                    style: _normalizeStyle({ ...stylePreview.value.second, bottom: stylePreview.value.stack === 'main_top' ? 'auto' : stylePreview.value.secondBottom, top: stylePreview.value.stack === 'main_top' ? stylePreview.value.secondBottom : 'auto' })
+                                                    style: _normalizeStyle({ ...stylePreview.value.second, bottom: stylePreview.value.secondBottom })
                                                   }, " Secondary line ", 4))
                                                 : _createCommentVNode("", true),
                                               _createElementVNode("div", {
                                                 class: "ss-style-preview__line",
-                                                style: _normalizeStyle({ ...stylePreview.value.main, bottom: stylePreview.value.stack === 'main_top' ? 'auto' : stylePreview.value.mainBottom, top: stylePreview.value.stack === 'main_top' ? stylePreview.value.thirdBottom : 'auto' })
+                                                style: _normalizeStyle({ ...stylePreview.value.main, bottom: stylePreview.value.stack === 'main_top' ? (stylePreview.value.langs[2] ? stylePreview.value.thirdBottom : stylePreview.value.langs[1] ? stylePreview.value.secondBottom : stylePreview.value.mainBottom) : stylePreview.value.mainBottom })
                                               }, " 这是主字幕 ", 4)
                                             ], 2),
                                             _createElementVNode("div", _hoisted_33, " 这块 16:9 是整幅画面的缩小。主字号 " + _toDisplayString(assStyle.value.sizes[0]) + " 约占高度 " + _toDisplayString(_unref(frameShare)(assStyle.value.sizes[0])) + "，底边距 " + _toDisplayString(assStyle.value.margin_v) + " 约占 " + _toDisplayString(_unref(frameShare)(assStyle.value.margin_v)) + "。成片按同一比例放大整幅画面。 ", 1),

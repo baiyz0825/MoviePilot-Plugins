@@ -218,7 +218,9 @@ def cues_from_words(words: Sequence[Dict[str, Any]], *, max_segment_ms: int) -> 
             gap = int(word.get("start_ms") or 0) - int(current[-1].get("end_ms") or 0)
             duration = int(word.get("end_ms") or 0) - int(current[0].get("start_ms") or 0)
             previous = "".join(str(item.get("text") or "") for item in current).strip()
-            if gap >= _PAUSE_MS or ends_sentence(previous) or duration > limit:
+            # Whisper can omit punctuation across several spoken sentences.
+            # Keep each cue short while retaining actual word boundaries.
+            if gap >= _PAUSE_MS or ends_sentence(previous) or duration > min(limit, 4500) or len(previous) + len(str(word.get("text") or "")) > 56:
                 flush()
         current.append(word)
     flush()

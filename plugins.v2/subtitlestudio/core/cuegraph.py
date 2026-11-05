@@ -254,9 +254,9 @@ def render_ass(
         )
     ]
     for index, size in enumerate(scaled_sizes, start=1):
-        # 叠行同侧对齐：main_bottom 全底部（主在下，副递增在上方），main_top 全顶部（主在上，副递增在下方）
-        alignment = 2 if stack == "main_bottom" else 8
-        line_margin = margin_v + (index - 1) * gap
+        # 两种顺序都固定在画面底部，只交换主副语言的上下关系。
+        alignment = 2
+        line_margin = margin_v + ((len(scaled_sizes) - index) if stack == "main_top" else (index - 1)) * gap
         styles.append(
             ass_style_line(
                 f"Lang{index}",

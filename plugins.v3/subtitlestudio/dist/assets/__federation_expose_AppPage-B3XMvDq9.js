@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { A as ASS_REFERENCE_HEIGHT, o as overlayCss, n as normalizeStyle, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-A8v7g4VP.js';
+import { A as ASS_REFERENCE_HEIGHT, o as overlayCss, n as normalizeStyle, a as useMobileViewport, u as useHostInjects, _ as _sfc_main$2, l as langLabel } from './SettingsForm-DJbwzTVs.js';
 import { c as createStudioApi } from './studioApi-CUfZ3-lv.js';
 
 const {openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,createElementVNode:_createElementVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,toDisplayString:_toDisplayString$1,normalizeStyle:_normalizeStyle$1,normalizeClass:_normalizeClass} = await importShared('vue');
@@ -10,6 +10,7 @@ const _hoisted_2$1 = {
   key: 1,
   class: "ss-board pa-6 text-center"
 };
+const _hoisted_3$1 = { key: 3 };
 
 const {computed: computed$1,nextTick,onBeforeUnmount: onBeforeUnmount$1,onMounted: onMounted$1,ref: ref$1,watch: watch$1} = await importShared('vue');
 
@@ -83,14 +84,9 @@ const dialogue = computed$1(() => {
 });
 const notes = computed$1(() => active.value.filter(item => item.kind === 'note'));
 const showDialogue = computed$1(() => props.tracks.includes('dialogue') || props.tracks.includes('stacked') || props.tracks.includes('sdh'));
-const stackedMode = computed$1(() => props.tracks.includes('stacked'));
 
 function textOf(cue, lang) {
   return cue?.texts?.[lang] || cue?.texts?.source || Object.values(cue?.texts || {})[0] || ''
-}
-
-function stackedText(cue) {
-  return (props.langs || []).map(lang => textOf(cue, lang)).filter(Boolean).join('\n')
 }
 
 function lineStyle(index, kind = 'dialogue') {
@@ -101,10 +97,8 @@ function lineStyle(index, kind = 'dialogue') {
   if (kind === 'note') {
     return { ...css, top: `${Math.max(8, margin)}px`, bottom: 'auto' }
   }
-  if (props.stack === 'main_top') {
-    return { ...css, top: `${margin + index * gap}px`, bottom: 'auto', whiteSpace: 'pre-line' }
-  }
-  return { ...css, bottom: `${margin + index * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
+  const rank = props.stack === 'main_top' ? Math.max(0, (props.langs?.length || 1) - index - 1) : index;
+  return { ...css, bottom: `${margin + rank * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
 }
 
 function onTime(event) {
@@ -141,23 +135,15 @@ return (_ctx, _cache) => {
             }), 128))
           : _createCommentVNode$1("", true),
         (showDialogue.value)
-          ? (_openBlock$1(), _createElementBlock$1(_Fragment$1, { key: 3 }, [
-              (stackedMode.value)
-                ? (_openBlock$1(true), _createElementBlock$1(_Fragment$1, { key: 0 }, _renderList$1(dialogue.value, (cue, index) => {
-                    return (_openBlock$1(), _createElementBlock$1("div", {
-                      key: cue.cue_id,
-                      class: "ss-overlay dialogue",
-                      style: _normalizeStyle$1(lineStyle(Math.min(index, 2)))
-                    }, _toDisplayString$1(stackedText(cue)), 5))
-                  }), 128))
-                : (_openBlock$1(true), _createElementBlock$1(_Fragment$1, { key: 1 }, _renderList$1(__props.langs, (lang, index) => {
-                    return (_openBlock$1(), _createElementBlock$1("div", {
-                      key: lang,
-                      class: _normalizeClass(["ss-overlay dialogue", [`rank${index + 1}`]]),
-                      style: _normalizeStyle$1(lineStyle(index))
-                    }, _toDisplayString$1(dialogue.value.map(item => textOf(item, lang)).filter(Boolean).join(' ')), 7))
-                  }), 128))
-            ], 64))
+          ? (_openBlock$1(), _createElementBlock$1("template", _hoisted_3$1, [
+              (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(__props.langs, (lang, index) => {
+                return (_openBlock$1(), _createElementBlock$1("div", {
+                  key: lang,
+                  class: _normalizeClass(["ss-overlay dialogue", [`rank${index + 1}`]]),
+                  style: _normalizeStyle$1(lineStyle(index))
+                }, _toDisplayString$1(dialogue.value.map(item => textOf(item, lang)).filter(Boolean).join(' ')), 7))
+              }), 128))
+            ]))
           : _createCommentVNode$1("", true)
       ], 512))
     : _createCommentVNode$1("", true)

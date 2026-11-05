@@ -90,6 +90,10 @@ def test_cuegraph_roundtrip_and_ass_styles(gen: str = GEN):
     graph.cues[0].texts["zh-Hans"] = "你好"
     ass = cuegraph.render_ass(graph, ["zh-Hans", "en"], sizes=[22, 17])
     assert "Style: Lang1" in ass and "Style: Lang2" in ass
+    top = cuegraph.render_ass(graph, ["zh-Hans", "en"], sizes=[22, 17], stack="main_top")
+    assert "Style: Lang1" in top
+    assert ",22," in top.split("Style: Lang1,")[1].splitlines()[0]
+    assert ",2,10,10," in top.split("Style: Lang1,")[1].splitlines()[0]
     assert "你好" in ass
     styled = cuegraph.render_ass(
         graph,
@@ -182,6 +186,13 @@ def test_asr_repair_splits_paragraph_on_sentences(gen: str = GEN):
     assert [item["text"] for item in words] == ["Hello there.", "Okay"]
     assert words[0]["end_ms"] == 900
     assert words[1]["start_ms"] == 2000
+    long_words = [
+        {"text": f" word{i}", "start_ms": i * 350, "end_ms": i * 350 + 250}
+        for i in range(18)
+    ]
+    short_cues = repair.cues_from_words(long_words, max_segment_ms=8000)
+    assert len(short_cues) > 1
+    assert short_cues[1]["start_ms"] > short_cues[0]["end_ms"]
     assert repair.translation_keeps_cue("Hello.", "你好。") is True
     long = "你好啊朋友。今天天气真的很不错，我们准备出发去海边。路上请一定要小心。到了之后记得再联系我。晚上见。"
     assert repair.translation_keeps_cue("Hello.", long) is False

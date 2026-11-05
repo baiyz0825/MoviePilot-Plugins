@@ -65,14 +65,9 @@ const dialogue = computed(() => {
 })
 const notes = computed(() => active.value.filter(item => item.kind === 'note'))
 const showDialogue = computed(() => props.tracks.includes('dialogue') || props.tracks.includes('stacked') || props.tracks.includes('sdh'))
-const stackedMode = computed(() => props.tracks.includes('stacked'))
 
 function textOf(cue, lang) {
   return cue?.texts?.[lang] || cue?.texts?.source || Object.values(cue?.texts || {})[0] || ''
-}
-
-function stackedText(cue) {
-  return (props.langs || []).map(lang => textOf(cue, lang)).filter(Boolean).join('\n')
 }
 
 function lineStyle(index, kind = 'dialogue') {
@@ -83,10 +78,8 @@ function lineStyle(index, kind = 'dialogue') {
   if (kind === 'note') {
     return { ...css, top: `${Math.max(8, margin)}px`, bottom: 'auto' }
   }
-  if (props.stack === 'main_top') {
-    return { ...css, top: `${margin + index * gap}px`, bottom: 'auto', whiteSpace: 'pre-line' }
-  }
-  return { ...css, bottom: `${margin + index * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
+  const rank = props.stack === 'main_top' ? Math.max(0, (props.langs?.length || 1) - index - 1) : index
+  return { ...css, bottom: `${margin + rank * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
 }
 
 function onTime(event) {
@@ -110,17 +103,7 @@ function onTime(event) {
       {{ textOf(note) }}
     </div>
     <template v-if="showDialogue">
-      <template v-if="stackedMode">
-        <div
-          v-for="(cue, index) in dialogue"
-          :key="cue.cue_id"
-          class="ss-overlay dialogue"
-          :style="lineStyle(Math.min(index, 2))"
-        >
-          {{ stackedText(cue) }}
-        </div>
-      </template>
-      <template v-else>
+      <template>
         <div
           v-for="(lang, index) in langs"
           :key="lang"

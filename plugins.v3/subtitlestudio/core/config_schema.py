@@ -149,11 +149,11 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "export", "group": "导出", "key": "lang_stack", "label": "叠行位置", "control": "select", "default": "main_bottom",
      "options": [{"title": "主下小上", "value": "main_bottom"}, {"title": "主上小下", "value": "main_top"}],
      "purpose": "多个语种叠在同一屏时，大和小谁在上。",
-     "after": "主下小上：国内常见「上英下中」。主上小下：接近现网 AutoSub「中上外下」。只勾 1 个语种时此项无效果。"},
+     "after": "两种顺序都在画面底部，只改变主副语言上下关系；单语时无效果。"},
     {"pane": "export", "group": "导出", "key": "export_layouts", "label": "版式", "control": "multi", "default": ["mono"],
      "options": [{"title": "单语", "value": "mono"}, {"title": "叠行", "value": "stacked"}, {"title": "分轨", "value": "split"}],
-     "purpose": "同一套语种以几种排法出现。",
-     "after": "单语：只写主语种。叠行：按顺序把 2–3 种语写进同一文件。分轨：每种语各一份。可同时勾。"},
+     "purpose": "选择一种字幕排版。",
+     "after": "单语：只写主语种。叠行：按顺序把 2–3 种语写进同一文件。分轨：每种语各一份。只能选一种。"},
     {"pane": "export", "group": "导出", "key": "export_formats", "label": "输出格式", "control": "multi", "default": ["srt"],
      "options": [{"title": "SRT", "value": "srt"}, {"title": "ASS", "value": "ass"}, {"title": "VTT", "value": "vtt"}],
      "purpose": "对白写成哪些容器。勾几个写几份。",
@@ -288,8 +288,11 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "quality", "group": "质量", "key": "write_failure_placeholder", "label": "失败句写入「[翻译失败]」", "control": "switch", "default": False,
      "purpose": "对不上的句子在字幕文件里写什么。",
      "after": "关（默认）：保留原文，工作台标 Issue。"},
-    {"pane": "queue", "group": "调轴", "key": "timeline_max_offset", "label": "最大偏移（秒）", "control": "number", "default": 120,
-     "purpose": "整轨最多能挪多久。", "after": "默认 120，上限 300。"},
+    {"pane": "queue", "group": "调轴", "key": "timeline_max_offset", "label": "最大偏移（秒）", "control": "number", "default": 30,
+     "purpose": "整轨最多能挪多久。", "after": "默认 30，上限 300；超过 30 秒还需开启允许风险偏移。"},
+    {"pane": "queue", "group": "调轴", "key": "timeline_auto_align", "label": "按音频自动校对时间轴", "control": "switch", "default": True,
+     "purpose": "对外挂或内嵌文本字幕用语音活动检测校对整轨偏移，不重新识别字幕内容。",
+     "after": "只有质量检查通过且偏移超过最小值才调整；内嵌字幕通常已对轴，检测不可靠时保留原轴。"},
     {"pane": "queue", "group": "调轴", "key": "timeline_min_offset", "label": "最小偏移（秒）", "control": "number", "default": 0.2,
      "purpose": "差多少才值得调。", "after": "小于此值当已经对齐。"},
     {"pane": "queue", "group": "调轴", "key": "timeline_allow_risky", "label": "允许风险偏移", "control": "switch", "default": False,
@@ -456,6 +459,7 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         normalized["mark_default"] = False
     normalized["target_languages"] = validate_target_languages(normalized.get("target_languages"))
     normalized["export_layouts"] = _pick_list(normalized.get("export_layouts"), tuple(LAYOUTS), ["mono"])
+    normalized["export_layouts"] = normalized["export_layouts"][:1]
     normalized["export_formats"] = _pick_list(normalized.get("export_formats"), FORMATS, ["srt"])
     normalized["timeline_max_offset"] = min(300, max(1, float(normalized.get("timeline_max_offset") or 120)))
     normalized["timeline_min_offset"] = max(0, float(normalized.get("timeline_min_offset") or 0.2))

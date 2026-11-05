@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import sys
+import types
 from pathlib import Path
 
 from tests.subtitlestudio_support.loader import load_domain
@@ -51,6 +53,74 @@ def test_generation_uses_local_sidecar_and_skips_asr(tmp_path: Path, gen: str = 
     written = tmp_path / "Movie.chi.zh-cn.srt"
     assert written.exists()
     assert "你好" in written.read_text(encoding="utf-8")
+
+
+def test_embedded_source_precedes_online_and_asr(tmp_path: Path, monkeypatch, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    calls = {"search": 0, "asr": 0}
+    embedded = models.CueGraph(job_id="j", source_lang="en", cues=[
+        models.Cue(cue_id="e1", index=1, start_ms=1200, end_ms=2000, texts={"source": "Hello."})
+    ])
+    monkeypatch.setattr(gen_mod, "extract_best_embedded", lambda *_args: embedded)
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    pipeline = gen_mod.GenerationPipeline(
+        store, lambda: {"enable_asr": True},
+        searcher=lambda *_args: calls.__setitem__("search", calls["search"] + 1),
+        asr=lambda *_args, **_kwargs: calls.__setitem__("asr", calls["asr"] + 1),
+    )
+    job = models.Job(job_id="j", title="Movie", path=str(video))
+    graph, asr_ran, _ = pipeline._resolve_source(job, {"enable_asr": True}, "search_then_translate")
+    assert graph is embedded
+    assert graph.cues[0].start_ms == 1200
+    assert not asr_ran
+    assert calls == {"search": 0, "asr": 0}
+
+
+def test_rerun_skips_own_export_but_uses_original_sidecar(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    generated = tmp_path / "Movie.default.chi.zh-cn.srt"
+    generated.write_text("1\n00:00:01,000 --> 00:00:02,000\nOld generated\n", encoding="utf-8")
+    original = tmp_path / "Movie.en.srt"
+    original.write_text("1\n00:00:03,000 --> 00:00:04,000\nOriginal\n", encoding="utf-8")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    job = models.Job(job_id="j", title="Movie", path=str(video), payload={
+        "export": [{"path": str(generated), "written": True}]
+    })
+    store.save_job(job)
+    pipeline = gen_mod.GenerationPipeline(store, lambda: {})
+    graph = pipeline._load_local_sidecar(job)
+    assert graph.cues[0].text() == "Original"
+
+
+def test_audio_alignment_applies_only_validated_matching_cues(tmp_path: Path, monkeypatch, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    timeline = load_domain(gen, "pipeline.timeline")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    graph = models.CueGraph(job_id="j", source_lang="en", cues=[
+        models.Cue(cue_id="a", index=1, start_ms=1000, end_ms=2000, texts={"en": "Hello"})
+    ])
+    parser = types.SimpleNamespace(parse_args=lambda args: args)
+    fake_pkg = types.ModuleType("ffsubsync")
+    fake_sub = types.ModuleType("ffsubsync.ffsubsync")
+    fake_sub.make_parser = lambda: parser
+    def run(args):
+        Path(args[args.index("-o") + 1]).write_text(
+            "1\n00:00:04,000 --> 00:00:05,000\nHello\n", encoding="utf-8"
+        )
+        return {"retval": 0, "sync_was_successful": True, "offset_seconds": 3.0}
+    fake_pkg.run = run
+    monkeypatch.setitem(sys.modules, "ffsubsync", fake_pkg)
+    monkeypatch.setitem(sys.modules, "ffsubsync.ffsubsync", fake_sub)
+    assert timeline.align_to_audio(graph, str(video), tmp_path, {}, None).cues[0].start_ms == 4000
 
 
 def test_strm_never_calls_asr(tmp_path: Path, gen: str = GEN):

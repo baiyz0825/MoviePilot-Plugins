@@ -31,6 +31,10 @@ function setField(key, value) {
 }
 
 function toggleList(key, value) {
+  if (key === 'export_layouts') {
+    setField(key, [value])
+    return
+  }
   const current = [...(config.value[key] || [])]
   const index = current.indexOf(value)
   if (index >= 0) {
@@ -272,6 +276,7 @@ function fallbackFields() {
     { pane: 'quality', key: 'repair_partial_accept', label: '好句先收下', control: 'switch' },
     { pane: 'quality', key: 'abort_on_high_failure', label: '失败率过高则整片不写', control: 'switch' },
     { pane: 'quality', key: 'write_failure_placeholder', label: '失败句写入「[翻译失败]」', control: 'switch' },
+    { pane: 'queue', key: 'timeline_auto_align', label: '按音频自动校对时间轴', control: 'switch' },
     { pane: 'queue', key: 'preview_enabled', label: '工作台在线预览', control: 'switch' },
     { pane: 'queue', key: 'preview_source', label: '预览画面来源', control: 'select', options: [
       { title: '本地文件优先', value: 'local_first' }, { title: '媒体服务器', value: 'mediaserver' }, { title: '仅字幕黑板', value: 'blackboard' },
@@ -595,20 +600,20 @@ const files = computed(() => exportPreview(config.value))
               <div
                 v-if="stylePreview.langs[2]"
                 class="ss-style-preview__line"
-                :style="{ ...stylePreview.third, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.thirdBottom, top: stylePreview.stack === 'main_top' ? stylePreview.mainBottom : 'auto' }"
+                :style="{ ...stylePreview.third, bottom: stylePreview.stack === 'main_top' ? stylePreview.mainBottom : stylePreview.thirdBottom }"
               >
                 三语小字
               </div>
               <div
                 v-if="stylePreview.langs[1]"
                 class="ss-style-preview__line"
-                :style="{ ...stylePreview.second, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.secondBottom, top: stylePreview.stack === 'main_top' ? stylePreview.secondBottom : 'auto' }"
+                :style="{ ...stylePreview.second, bottom: stylePreview.secondBottom }"
               >
                 Secondary line
               </div>
               <div
                 class="ss-style-preview__line"
-                :style="{ ...stylePreview.main, bottom: stylePreview.stack === 'main_top' ? 'auto' : stylePreview.mainBottom, top: stylePreview.stack === 'main_top' ? stylePreview.thirdBottom : 'auto' }"
+                :style="{ ...stylePreview.main, bottom: stylePreview.stack === 'main_top' ? (stylePreview.langs[2] ? stylePreview.thirdBottom : stylePreview.langs[1] ? stylePreview.secondBottom : stylePreview.mainBottom) : stylePreview.mainBottom }"
               >
                 这是主字幕
               </div>

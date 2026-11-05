@@ -25,6 +25,7 @@ from ..packager.export_pack import write_export_pack
 from ..storage.job_store import JobStore
 from .effects import EffectsBuilder
 from .translation import TranslationService
+from .timeline import align_to_audio
 
 
 class GenerationPipeline:
@@ -153,6 +154,8 @@ class GenerationPipeline:
                 latest.error = latest.error or "没有可用字幕源"
                 studio_log(self.logger, "error", "没有可用字幕源 job=%s path=%s", latest.job_id, latest.path)
                 return self._finish(latest, config, started)
+            if not asr_ran and not (latest.is_strm or is_strm_path(latest.path)):
+                graph = align_to_audio(graph, latest.path, self.store.path.parent, config, self.logger)
             if not graph.cues and not graph.notes:
                 latest.status = "failed"
                 latest.error = "字幕源为空（0 句）"
@@ -303,7 +306,14 @@ class GenerationPipeline:
             graph = None
         if graph:
             studio_log(self.logger, "info", "使用本地外挂 cues=%s", len(graph.cues))
-        elif strategy != "translate_only" and self.searcher:
+        if graph is None and strategy != "search_only" and not (job.is_strm or is_strm_path(job.path)):
+            self._progress(3, "提取内嵌字幕 path=%s", job.path)
+            graph = extract_best_embedded(job, config, self.logger)
+            if graph and not graph.cues:
+                graph = None
+            if graph:
+                studio_log(self.logger, "info", "使用内嵌字幕 cues=%s", len(graph.cues))
+        if graph is None and strategy != "translate_only" and self.searcher:
             self._progress(2, "在线搜索 title=%s", job.title)
             found = self.searcher(job, config)
             if found and found.get("content"):
@@ -317,14 +327,6 @@ class GenerationPipeline:
                 studio_log(self.logger, "info", "在线搜索没有可用正文")
         else:
             self._progress(2, "跳过在线搜索 strategy=%s", strategy)
-        self._ensure_not_cancelled()
-        if graph is None and strategy != "search_only" and not (job.is_strm or is_strm_path(job.path)):
-            self._progress(3, "提取内嵌字幕 path=%s", job.path)
-            graph = extract_best_embedded(job, config, self.logger)
-            if graph and not graph.cues:
-                graph = None
-            if graph:
-                studio_log(self.logger, "info", "使用内嵌字幕 cues=%s", len(graph.cues))
         self._ensure_not_cancelled()
         if graph is None and strategy != "search_only" and config.get("enable_asr") and not (job.is_strm or is_strm_path(job.path)):
             self._progress(4, "开始 ASR model=%s", config.get("whisper_model") or "base")
@@ -369,11 +371,17 @@ class GenerationPipeline:
             item for item in sorted(path.parent.iterdir())
             if item.suffix.lower() in {".srt", ".ass", ".ssa", ".vtt"} and path.stem.lower() in item.name.lower()
         ]
+        generated = self.store.exported_subtitle_paths(str(path))
         for index, item in enumerate(sidecars, start=1):
+            if str(item.resolve()) in generated or ".asr." in item.name.lower():
+                studio_log(self.logger, "info", "跳过插件旧产物 %s", item.name)
+                continue
             self._progress(1, "", percent=min(16, 8 + index), detail=f"查看本地外挂 {index}/{len(sidecars)} · {item.name}")
             try:
                 studio_log(self.logger, "info", "发现本地外挂 %s", item.name)
-                return parse_subtitle(item.read_text(encoding="utf-8", errors="ignore"), item.name, job_id=job.job_id)
+                graph = parse_subtitle(item.read_text(encoding="utf-8", errors="ignore"), item.name, job_id=job.job_id)
+                if graph.cues:
+                    return graph
             except OSError as exc:
                 studio_log(self.logger, "warning", "读取本地外挂失败 %s：%s", item.name, exc)
                 continue

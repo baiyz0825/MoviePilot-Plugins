@@ -204,6 +204,24 @@ class JobStore:
             rows = conn.execute(sql, args).fetchall()
         return [self._job_from_row(row) for row in rows]
 
+    def exported_subtitle_paths(self, media_path: str) -> set[str]:
+        """已落盘的本插件产物，重跑时不能再当原始外挂。"""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM plugin_subtitlestudio_jobs WHERE plugin_id=? AND path=?",
+                (self.plugin_id, media_path),
+            ).fetchall()
+        paths = set()
+        for row in rows:
+            try:
+                exports = json.loads(row["payload"] or "{}").get("export") or []
+            except (ValueError, TypeError):
+                continue
+            for item in exports:
+                if isinstance(item, dict) and item.get("written") and item.get("path"):
+                    paths.add(str(Path(item["path"]).resolve()))
+        return paths
+
     def pending_jobs(self, *, allow_p2: bool = True) -> List[Job]:
         jobs = [item for item in self.list_jobs(status="pending") if item.status == "pending"]
         if not allow_p2:
