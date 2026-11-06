@@ -235,6 +235,9 @@ class JobStore:
         rows = self.list_jobs(status="running", limit=1)
         return rows[0] if rows else None
 
+    def running_count(self) -> int:
+        return len(self.list_jobs(status="running", limit=20))
+
     def reclaim_orphan_running(self, *, reason: str = "进程中断，任务已回收") -> int:
         """进程刚启动时，库里任何 running 都属于上一进程的孤儿，必须回收以免队列死锁。"""
         rows = self.list_jobs(status="running", limit=500)

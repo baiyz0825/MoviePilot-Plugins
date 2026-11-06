@@ -216,9 +216,11 @@ class StudioApiMixin:
         if overwrite:
             config = {**config, "skip_existing_chinese": False}
         _ok_gate, reason = evaluate_gates(config, path, data)
-        strategy = str(data.get("strategy") or config.get("transfer_strategy") or "search_then_translate")
+        strategy = str(data.get("strategy") or "standard")
+        if strategy == "search_then_translate":
+            strategy = "standard"
         if is_strm_path(path) and strategy == "translate_only":
-            strategy = "search_then_translate"
+            strategy = "standard"
         job = self.services.scheduler.enqueue(
             title=str(data.get("title") or Path(path).stem),
             path=path,

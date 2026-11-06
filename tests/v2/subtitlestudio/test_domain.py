@@ -44,6 +44,8 @@ def test_config_defaults_and_language_limit(gen: str = GEN):
     assert "watch_paths" in keys and "openai_endpoints" in keys
     assert "ass_style" in keys
     assert "notify_on" in keys
+    assert cfg["online_search_enabled"] is True
+    assert cfg["queue_workers"] == 2
     assert cfg["send_notify"] is False
     assert cfg["notify_on"] == ["success", "failed"]
     assert cfg["ass_style"]["sizes"] == [60, 47, 38]

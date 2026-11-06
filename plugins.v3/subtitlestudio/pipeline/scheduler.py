@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, Optional
 from ..core.errors import JobCancelled, user_message
 from ..core.logging import studio_done, studio_log
 from ..core.models import Job
-from ..core.notify import should_notify
+from ..core.notify import claim_notification, should_notify
 from ..ingest.debounce import IngestDebouncer
 from ..ingest.gates import evaluate_gates, is_strm_path
 from ..storage.job_store import JobStore, utc_now
@@ -62,6 +62,8 @@ class JobScheduler:
         self._worker: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._busy = threading.Event()
+        self._inflight = 0
+        self._inflight_lock = threading.Lock()
 
     def start(self) -> None:
         with self._lock:
@@ -243,8 +245,6 @@ class JobScheduler:
                     self.logger.error(traceback.format_exc())
 
     def _step(self) -> None:
-        if self.store.running_job():
-            return
         config = {}
         allow_p2 = True
         getter = getattr(self, "config_getter", None)
@@ -253,16 +253,27 @@ class JobScheduler:
             window = parse_offpeak_window(config.get("queue_offpeak_window") or "")
             if config.get("queue_offpeak_enabled"):
                 allow_p2 = in_offpeak_window(window)
-        pending = self.store.pending_jobs(allow_p2=allow_p2)
-        if not pending:
+        limit = max(1, min(4, int(config.get("queue_workers") or 2)))
+        running = self.store.running_count()
+        slots = limit - running
+        if slots <= 0:
             return
-        job = pending[0]
+        pending = self.store.pending_jobs(allow_p2=allow_p2)
+        for job in pending[:slots]:
+            self._claim(job)
+
+    def _claim(self, job: Job) -> None:
         job.status = "running"
         job.started_at = utc_now()
         job.error = ""
         self.store.save_job(job)
         studio_log(self.logger, "info", "开始执行 job=%s title=%s priority=%s", job.job_id, job.title, job.priority)
-        self._busy.set()
+        with self._inflight_lock:
+            self._inflight += 1
+            self._busy.set()
+        threading.Thread(target=self._run_job, args=(job,), name=f"subtitlestudio-job-{job.job_id[:8]}", daemon=True).start()
+
+    def _run_job(self, job: Job) -> None:
         try:
             self.runner(job)
             latest = self.store.get_job(job.job_id) or job
@@ -296,13 +307,22 @@ class JobScheduler:
             self._maybe_notify(job)
             studio_done(self.logger)
         finally:
-            self._busy.clear()
+            with self._inflight_lock:
+                self._inflight = max(0, self._inflight - 1)
+                if self._inflight <= 0:
+                    self._busy.clear()
 
     def _maybe_notify(self, job: Job) -> None:
         getter = getattr(self, "config_getter", None)
         config = getter() if callable(getter) else {}
         if not should_notify(config or {}, job) or not self.notify:
             return
+        if not claim_notification(job):
+            return
+        try:
+            self.store.save_job(job)
+        except Exception as exc:  # noqa: BLE001
+            studio_log(self.logger, "warning", "通知标记写库失败 job=%s：%s", job.job_id, exc)
         try:
             self.notify(job)
         except Exception as exc:  # noqa: BLE001

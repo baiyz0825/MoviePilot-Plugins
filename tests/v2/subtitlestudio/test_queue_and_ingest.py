@@ -65,6 +65,33 @@ def test_job_store_cut_in_does_not_touch_running(tmp_path: Path, gen: str = GEN)
     assert running and running.job_id == first.job_id
 
 
+def test_scheduler_runs_jobs_together(tmp_path: Path, gen: str = GEN):
+    import threading
+    import time
+
+    store_mod = load_domain(gen, "storage.job_store")
+    sched_mod = load_domain(gen, "pipeline.scheduler")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    started = []
+    release = threading.Event()
+
+    def runner(job):
+        started.append(job.job_id)
+        release.wait(2)
+
+    scheduler = sched_mod.JobScheduler(store, runner)
+    scheduler.config_getter = lambda: {"queue_workers": 2}
+    scheduler.enqueue(title="A", path=str(tmp_path / "A.mkv"), trigger="manual", force=True)
+    scheduler.enqueue(title="B", path=str(tmp_path / "B.mkv"), trigger="manual", force=True)
+    scheduler._step()
+    deadline = time.monotonic() + 1
+    while len(started) < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert len(started) == 2
+    assert store.running_count() == 2
+    release.set()
+
+
 def test_scheduler_notifies_skipped_and_cancelled(tmp_path: Path, gen: str = GEN):
     store_mod = load_domain(gen, "storage.job_store")
     sched_mod = load_domain(gen, "pipeline.scheduler")

@@ -12,6 +12,7 @@ from ..core.logging import studio_log
 from ..core.models import Cue, CueGraph
 
 _MODEL_LOCK = threading.Lock()
+_TRANSCRIBE_LOCK = threading.Lock()
 _MODEL_CACHE: Dict[str, Any] = {}
 _MODEL_LAST_USED: Dict[str, float] = {}
 _MODEL_TTL_SECONDS = 30 * 60
@@ -115,8 +116,9 @@ def transcribe(job, config: Dict[str, Any], logger: Any = None, *, cancel_check=
     if not config.get("auto_detect_language") and not language:
         language = None
     max_ms = int(max(1, float(config.get("max_segment_seconds") or 8)) * 1000)
-    segments, info = _collect_segments(model, path, language, logger, cancel_check=cancel_check, progress=progress)
-    cues = []
+    with _TRANSCRIBE_LOCK:
+        segments, info = _collect_segments(model, path, language, logger, cancel_check=cancel_check, progress=progress)
+        cues = []
     for index, segment in enumerate(segments, start=1):
         if callable(cancel_check) and index % 20 == 0:
             cancel_check()

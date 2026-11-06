@@ -524,9 +524,7 @@ function fallbackFields() {
     { pane: 'ingest', key: 'watch_paths', label: '监控的媒体目录', control: 'textarea', rows: 4, purpose: '一行一条路径。', after: '真实换行，不要写字面 \\n。', placeholder: '/media/movies\n/media/tv' },
     { pane: 'ingest', key: 'skip_chinese_media', label: '跳过中文资源', control: 'switch' },
     { pane: 'ingest', key: 'skip_existing_chinese', label: '已有中字则跳过', control: 'switch' },
-    { pane: 'ingest', key: 'transfer_strategy', label: '入库处理策略', control: 'select', options: [
-      { title: '先搜后译', value: 'search_then_translate' }, { title: '只搜索', value: 'search_only' }, { title: '只识别翻译', value: 'translate_only' },
-    ] },
+    { pane: 'search', key: 'online_search_enabled', label: '开启在线搜索', control: 'switch', purpose: '处理时先到字幕站找一份。', after: '开：在线搜索、本地外挂、内嵌、ASR。关：从本地外挂开始。在线和本地字幕会按音轨校正时间。' },
     { pane: 'ingest', key: 'trust_transfer_history', label: '信任整理历史路径', control: 'switch' },
     { pane: 'ingest', key: 'strm_enabled', label: '监控 STRM 目录', control: 'switch' },
     { pane: 'ingest', key: 'strm_paths', label: 'STRM 本地目录', control: 'textarea', rows: 5, placeholder: '/media/strm-movies\n/media/strm-tv' },
@@ -601,6 +599,7 @@ function fallbackFields() {
     { pane: 'queue', key: 'preview_source', label: '预览画面来源', control: 'select', options: [
       { title: '本地文件优先', value: 'local_first' }, { title: '媒体服务器', value: 'mediaserver' }, { title: '仅字幕黑板', value: 'blackboard' },
     ] },
+    { pane: 'queue', key: 'queue_workers', label: '同时处理任务数', control: 'number', purpose: '队列里最多几个任务一起跑。', after: '默认 2，最大 4。语音识别仍会排队。' },
     { pane: 'queue', key: 'queue_offpeak_enabled', label: '错峰只跑 P2', control: 'switch' },
     { pane: 'queue', key: 'queue_offpeak_window', label: '错峰时间窗', control: 'text', placeholder: '02:00-07:00' },
     { pane: 'queue', key: 'workflow_enabled', label: '开放工作流动作', control: 'switch' },

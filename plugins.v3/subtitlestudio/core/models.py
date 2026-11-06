@@ -25,7 +25,8 @@ PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 TRIGGERS = ("event", "watch", "strm", "manual", "workflow", "command")
 
 STRATEGIES = {
-    "search_then_translate": "先搜后译",
+    "standard": "默认流程",
+    "search_then_translate": "默认流程",
     "search_only": "只搜索",
     "translate_only": "只识别翻译",
 }

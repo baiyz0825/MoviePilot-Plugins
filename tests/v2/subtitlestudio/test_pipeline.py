@@ -55,7 +55,29 @@ def test_generation_uses_local_sidecar_and_skips_asr(tmp_path: Path, gen: str = 
     assert "你好" in written.read_text(encoding="utf-8")
 
 
-def test_embedded_source_precedes_online_and_asr(tmp_path: Path, monkeypatch, gen: str = GEN):
+def test_online_source_precedes_local_sidecar(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    (tmp_path / "Movie.en.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nLocal\n", encoding="utf-8")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    pipeline = gen_mod.GenerationPipeline(
+        store,
+        lambda: {"online_search_enabled": True, "enable_asr": True},
+        searcher=lambda *_args: {"content": "1\n00:00:01,000 --> 00:00:02,000\nOnline\n", "filename": "online.srt", "lang": "en"},
+        asr=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("ASR should not run")),
+    )
+    job = models.Job(job_id="j-online", title="Movie", path=str(video))
+    store.save_job(job)
+    graph, asr_ran, _ = pipeline._resolve_source(job, {"online_search_enabled": True, "enable_asr": True}, "standard")
+    assert graph.cues[0].text() == "Online"
+    assert not asr_ran
+    assert job.payload["subtitle_source"] == "online"
+
+
+def test_embedded_follows_failed_online_search(tmp_path: Path, monkeypatch, gen: str = GEN):
     models = load_domain(gen, "core.models")
     store_mod = load_domain(gen, "storage.job_store")
     gen_mod = load_domain(gen, "pipeline.generation")
@@ -77,7 +99,7 @@ def test_embedded_source_precedes_online_and_asr(tmp_path: Path, monkeypatch, ge
     assert graph is embedded
     assert graph.cues[0].start_ms == 1200
     assert not asr_ran
-    assert calls == {"search": 0, "asr": 0}
+    assert calls == {"search": 1, "asr": 0}
 
 
 def test_rerun_skips_own_export_but_uses_original_sidecar(tmp_path: Path, gen: str = GEN):

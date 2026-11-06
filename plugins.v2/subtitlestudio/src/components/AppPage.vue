@@ -142,23 +142,25 @@ const tabs = [
 ]
 
 const duration = computed(() => Math.max(graph.value.duration_ms || 1, ...(graph.value.cues || []).map(item => item.end_ms || 0), 1))
-const strategyItems = computed(() => {
-  const all = [
-    { title: '先搜后译', value: 'search_then_translate' },
-    { title: '只搜索', value: 'search_only' },
-    { title: '只识别翻译', value: 'translate_only' },
-  ]
-  if (enqueueHasStrm.value) {
-    return all.filter(item => item.value !== 'translate_only')
-  }
-  return all
-})
+const subtitleFilter = ref('')
+const selectedGroupIds = ref({})
 
-watch(enqueueHasStrm, (value) => {
-  if (value && enqueueForm.strategy === 'translate_only') {
-    enqueueForm.strategy = 'search_then_translate'
-  }
-})
+function fileHasSubtitle(file) {
+  return !!(file?.sidecars?.length || file?.already_processed)
+}
+
+const visibleGroups = computed(() => (mediaGroups.value || []).map(group => {
+  const files = (group.files || []).filter(file => {
+    if (subtitleFilter.value === 'has') return fileHasSubtitle(file)
+    if (subtitleFilter.value === 'missing') return !fileHasSubtitle(file)
+    return true
+  })
+  return files.length ? { ...group, files, file_count: files.length } : null
+}).filter(Boolean))
+
+const selectedGroupFiles = computed(() => visibleGroups.value
+  .filter(group => selectedGroupIds.value[group.id])
+  .flatMap(group => group.files || []))
 
 watch(nav, async (value, prev) => {
   if (prev === 'settings' && value !== 'settings' && dirty.value) {
@@ -211,6 +213,25 @@ async function refreshLibrary() {
 function openGroup(group) {
   mediaDetail.value = group
   selectedPaths.value = Object.fromEntries((group.files || []).map(item => [item.path, true]))
+}
+
+function toggleGroup(id, value) {
+  selectedGroupIds.value = { ...selectedGroupIds.value, [id]: value }
+}
+
+function toggleVisibleGroups(value) {
+  selectedGroupIds.value = Object.fromEntries(visibleGroups.value.map(group => [group.id, value]))
+}
+
+async function submitGroups() {
+  const files = selectedGroupFiles.value
+  if (!files.length) {
+    toast.error?.('先勾选要提交的影片')
+    return
+  }
+  const completedCount = files.filter(item => item.already_processed).length
+  if (completedCount && !(await confirm(`${completedCount} 个文件已有成功处理记录。再次提交会重新执行并消耗模型资源，仍要继续吗？`))) return
+  prepareEnqueue(files)
 }
 
 function toggleFile(path, value) {
@@ -307,7 +328,6 @@ async function confirmEnqueue() {
     const items = enqueueForm.items?.length ? enqueueForm.items : [enqueueForm]
     const data = await pluginApi.value.createJobs({
       items,
-      strategy: enqueueForm.strategy,
       priority: enqueueForm.priority,
       force: enqueueForm.force,
       overwrite: enqueueForm.overwrite,
@@ -590,18 +610,34 @@ defineExpose({ reload, loadStatus: reload })
             <VChip :color="mediaType === 'tv' ? 'primary' : undefined" @click="mediaType = 'tv'; loadMedia()">剧集</VChip>
             <VBtn size="small" class="ss-touch" :loading="loading" @click="refreshLibrary">拉取媒体库</VBtn>
           </div>
-          <div class="text-medium-emphasis mb-3">整理记录 {{ mediaCounts.groups || 0 }} 部 · {{ mediaCounts.files || 0 }} 个文件</div>
-          <VAlert v-if="!mediaGroups.length" type="info" variant="tonal" class="mb-3">
-            没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。
+          <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
+            <VChip :color="!subtitleFilter ? 'primary' : undefined" @click="subtitleFilter = ''">字幕不限</VChip>
+            <VChip :color="subtitleFilter === 'has' ? 'primary' : undefined" @click="subtitleFilter = 'has'">已有字幕</VChip>
+            <VChip :color="subtitleFilter === 'missing' ? 'primary' : undefined" @click="subtitleFilter = 'missing'">没有字幕</VChip>
+          </div>
+          <div class="d-flex ga-2 mb-3">
+            <VBtn size="small" variant="text" class="ss-touch" @click="toggleVisibleGroups(true)">全选</VBtn>
+            <VBtn size="small" variant="text" class="ss-touch" @click="toggleVisibleGroups(false)">清空</VBtn>
+            <VBtn size="small" color="primary" class="ss-touch" :disabled="!selectedGroupFiles.length" @click="submitGroups">提交所选（{{ selectedGroupFiles.length }}）</VBtn>
+          </div>
+          <div class="text-medium-emphasis mb-3">整理记录 {{ visibleGroups.length }} 部 · {{ visibleGroups.reduce((sum, group) => sum + (group.file_count || 0), 0) }} 个文件</div>
+          <VAlert v-if="!visibleGroups.length" type="info" variant="tonal" class="mb-3">
+            {{ subtitleFilter ? '这个筛选下没有影片。' : '没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。' }}
           </VAlert>
           <VList>
             <VListItem
-              v-for="item in mediaGroups"
+              v-for="item in visibleGroups"
               :key="item.id"
               class="ss-card mb-2"
               @click="openGroup(item)"
             >
               <template #prepend>
+                <VCheckbox
+                  :model-value="!!selectedGroupIds[item.id]"
+                  hide-details
+                  @click.stop
+                  @update:model-value="toggleGroup(item.id, $event)"
+                />
                 <div class="ss-media-poster" aria-hidden="true">
                   <img
                     v-if="item.poster && !failedPosterUrls.has(item.poster)"
@@ -764,7 +800,6 @@ defineExpose({ reload, loadStatus: reload })
         <VAlert v-if="enqueueHasStrm" type="warning" variant="tonal" class="mb-3">
           勾选里含 STRM：只搜外挂 / 翻译 / 导出，不做 ASR 和调轴。
         </VAlert>
-        <VSelect v-model="enqueueForm.strategy" label="本次策略" :items="strategyItems" />
         <VSelect v-model="enqueueForm.priority" label="优先级" :items="['P0', 'P1', 'P2']" />
         <VSwitch v-model="enqueueForm.overwrite" label="再次翻译时覆盖已有字幕" hide-details class="mb-1" />
         <div class="text-caption text-medium-emphasis mb-2">打开后这次直接替换目标字幕，不再受设置里「跳过已有文件」的影响。已有中字也不会拦住这次入队。</div>

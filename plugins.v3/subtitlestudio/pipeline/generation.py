@@ -24,6 +24,7 @@ from ..ingest.gates import is_strm_path
 from ..packager.export_pack import write_export_pack
 from ..storage.job_store import JobStore
 from .effects import EffectsBuilder
+from .timeline import align_to_audio
 from .translation import TranslationService
 from .timeline import align_to_audio
 
@@ -83,7 +84,7 @@ class GenerationPipeline:
             return
         value = mapped if percent is None else int(percent)
         value = max(0, min(99, value))
-        if self._current_job.stage == stage and value < int(self._current_job.progress or 0):
+        if value < int(self._current_job.progress or 0):
             value = int(self._current_job.progress or 0)
         detail_text = fallback if detail is None else str(detail)
         if (
@@ -142,20 +143,20 @@ class GenerationPipeline:
                     latest = self.store.save_job(latest)
                     self._current_job = latest
                     studio_log(self.logger, "info", "任务路径改用媒体库整理结果 source=%s library=%s", original_path, organized_path)
-            strategy = latest.strategy or config.get("transfer_strategy") or "search_then_translate"
-            if latest.is_strm or is_strm_path(latest.path):
-                if strategy == "translate_only":
-                    strategy = "search_then_translate"
-                    studio_log(self.logger, "info", "STRM 强制改为搜索策略 job=%s", latest.job_id)
+            strategy = latest.strategy or "standard"
+            if strategy == "search_then_translate":
+                strategy = "standard"
             graph, asr_ran, asr_graph = self._resolve_source(latest, config, strategy)
             self._ensure_not_cancelled()
+            source = str((latest.payload or {}).get("subtitle_source") or "")
+            if graph is not None and source in {"online", "local"} and not (latest.is_strm or is_strm_path(latest.path)):
+                self._progress(4, "按音轨校正时间轴 source=%s", source, percent=40, detail="按音轨校正时间轴")
+                graph = align_to_audio(graph, latest.path, self.store.path.parent, config, self.logger)
             if graph is None:
                 latest.status = "failed"
                 latest.error = latest.error or "没有可用字幕源"
                 studio_log(self.logger, "error", "没有可用字幕源 job=%s path=%s", latest.job_id, latest.path)
                 return self._finish(latest, config, started)
-            if not asr_ran and not (latest.is_strm or is_strm_path(latest.path)):
-                graph = align_to_audio(graph, latest.path, self.store.path.parent, config, self.logger)
             if not graph.cues and not graph.notes:
                 latest.status = "failed"
                 latest.error = "字幕源为空（0 句）"
@@ -289,31 +290,40 @@ class GenerationPipeline:
         return saved
 
     def _emit_notify(self, job: Job, config: Dict[str, Any]) -> None:
+        from ..core.notify import claim_notification
         if not should_notify(config, job) or not self.notify:
             return
+        if not claim_notification(job):
+            return
+        try:
+            self.store.save_job(job)
+        except Exception as exc:  # noqa: BLE001
+            studio_log(self.logger, "warning", "通知标记写库失败 job=%s：%s", job.job_id, exc)
         try:
             self.notify(job)
         except Exception as exc:  # noqa: BLE001 — 通知失败不能把任务改成失败
             studio_log(self.logger, "warning", "通知推送失败 job=%s：%s", job.job_id, exc)
 
+    def _mark_source(self, job: Job, source: str) -> None:
+        job.payload = {**(job.payload or {}), "subtitle_source": source}
+
+    def _online_search_enabled(self, config: Dict[str, Any], strategy: str) -> bool:
+        if strategy == "translate_only":
+            return False
+        if strategy == "search_only":
+            return True
+        if "online_search_enabled" in (config or {}):
+            return bool(config.get("online_search_enabled"))
+        return True
+
     def _resolve_source(self, job: Job, config: Dict[str, Any], strategy: str):
         asr_ran = False
         asr_graph = None
-        self._progress(1, "查找本地外挂 path=%s", job.path)
-        graph = self._load_local_sidecar(job)
-        if graph and not graph.cues:
-            studio_log(self.logger, "warning", "本地外挂解析为空，继续尝试其他源")
-            graph = None
-        if graph:
-            studio_log(self.logger, "info", "使用本地外挂 cues=%s", len(graph.cues))
-        if graph is None and strategy != "search_only" and not (job.is_strm or is_strm_path(job.path)):
-            self._progress(3, "提取内嵌字幕 path=%s", job.path)
-            graph = extract_best_embedded(job, config, self.logger)
-            if graph and not graph.cues:
-                graph = None
-            if graph:
-                studio_log(self.logger, "info", "使用内嵌字幕 cues=%s", len(graph.cues))
-        if graph is None and strategy != "translate_only" and self.searcher:
+        graph = None
+        source = ""
+        match_only = strategy == "search_only"
+        strm = bool(job.is_strm or is_strm_path(job.path))
+        if self._online_search_enabled(config, strategy) and self.searcher:
             self._progress(2, "在线搜索 title=%s", job.title)
             found = self.searcher(job, config)
             if found and found.get("content"):
@@ -322,13 +332,31 @@ class GenerationPipeline:
                     studio_log(self.logger, "warning", "在线字幕解析为空 file=%s", found.get("filename") or found.get("title"))
                     graph = None
                 else:
+                    source = "online"
                     studio_log(self.logger, "info", "采用在线字幕 file=%s lang=%s cues=%s", found.get("filename") or found.get("title"), found.get("lang"), len(graph.cues))
             else:
                 studio_log(self.logger, "info", "在线搜索没有可用正文")
         else:
-            self._progress(2, "跳过在线搜索 strategy=%s", strategy)
+            self._progress(2, "跳过在线搜索")
+        if graph is None and not match_only:
+            self._progress(1, "查找本地外挂 path=%s", job.path, percent=24, detail="查找本地外挂")
+            graph = self._load_local_sidecar(job)
+            if graph and not graph.cues:
+                studio_log(self.logger, "warning", "本地外挂解析为空，继续尝试其他源")
+                graph = None
+            if graph:
+                source = "local"
+                studio_log(self.logger, "info", "使用本地外挂 cues=%s", len(graph.cues))
+        if graph is None and not match_only and not strm:
+            self._progress(3, "提取内嵌字幕 path=%s", job.path)
+            graph = extract_best_embedded(job, config, self.logger)
+            if graph and not graph.cues:
+                graph = None
+            if graph:
+                source = "embedded"
+                studio_log(self.logger, "info", "使用内嵌字幕 cues=%s", len(graph.cues))
         self._ensure_not_cancelled()
-        if graph is None and strategy != "search_only" and config.get("enable_asr") and not (job.is_strm or is_strm_path(job.path)):
+        if graph is None and not match_only and config.get("enable_asr") and not strm:
             self._progress(4, "开始 ASR model=%s", config.get("whisper_model") or "base")
             if self.asr:
                 def _on_asr(done: int) -> None:
@@ -345,6 +373,7 @@ class GenerationPipeline:
                         graph = self.asr(job, config)
                 if graph and graph.cues:
                     asr_ran = True
+                    source = "asr"
                     graph = repair_asr_graph(
                         graph,
                         enabled=bool(config.get("asr_repair_enabled", True)),
@@ -356,8 +385,10 @@ class GenerationPipeline:
                     graph = None
                     studio_log(self.logger, "warning", "ASR 没有产出字幕")
         elif graph is None:
-            reason = "STRM 不做识别" if (job.is_strm or is_strm_path(job.path)) else ("策略只搜索" if strategy == "search_only" else "ASR 未开启")
+            reason = "STRM 不做识别" if strm else ("只匹配在线字幕" if match_only else "ASR 未开启")
             self._progress(4, "跳过 ASR：%s", reason)
+        if source:
+            self._mark_source(job, source)
         if graph:
             graph.job_id = job.job_id
         return graph, asr_ran, asr_graph

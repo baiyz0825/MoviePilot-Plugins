@@ -86,12 +86,9 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "ingest", "group": "入库", "key": "skip_existing_chinese", "label": "已有中字则跳过", "control": "switch", "default": True,
      "purpose": "入队前检查目录里是否已有中文字幕。",
      "after": "开：已有中字不建任务。关：仍入队，最终写不写盘看「覆盖策略」。这是门禁，覆盖策略是落盘时的行为。"},
-    {"pane": "ingest", "group": "入库", "key": "transfer_strategy", "label": "入库处理策略", "control": "select",
-     "default": "search_then_translate",
-     "options": [{"title": "先搜后译", "value": "search_then_translate"}, {"title": "只搜索", "value": "search_only"},
-                 {"title": "只识别翻译", "value": "translate_only"}],
-     "purpose": "自动任务先干什么。",
-     "after": "先搜后译：能搜到外挂就不再 ASR。只搜索：只下载，不翻译、不识别。只识别翻译：不去字幕站，用外挂/内嵌/ASR 再译。"},
+    {"pane": "search", "group": "搜索", "key": "online_search_enabled", "label": "开启在线搜索", "control": "switch", "default": True,
+     "purpose": "处理时先到字幕站找一份。",
+     "after": "开（默认）：顺序是在线搜索、本地外挂、内嵌、ASR，找到能用的就停。关：跳过字幕站，从本地外挂开始。在线或本地字幕都会按音轨校正时间。"},
     {"pane": "ingest", "group": "入库", "key": "trust_transfer_history", "label": "信任整理历史路径", "control": "switch", "default": False,
      "purpose": "刷新媒体目录时少碰磁盘，给网盘/CD2/SMB 用。",
      "after": "开：按整理记录列文件，不逐个探测是否存在，刷新更快。关：更准但慢路径会卡。"},
@@ -198,7 +195,7 @@ FIELDS: List[Dict[str, Any]] = [
      "after": "默认约每 2.5 分钟最多 1 条，每屏 1 条。过长内容进 Briefing。"},
     {"pane": "asr", "group": "识别", "key": "enable_asr", "label": "允许 ASR", "control": "switch", "default": True,
      "purpose": "没有外挂/内嵌时，用 Whisper 听写。",
-     "after": "开：搜不到字幕就听写再译。关：搜不到任务失败。和「大模型调用」不是同一组。"},
+     "after": "开：在线、外挂、内嵌都没有时才听写再译。关：没有字幕源就失败。STRM 不会听写。"},
     {"pane": "asr", "group": "识别", "key": "save_asr_track", "label": "保存 ASR 原轨", "control": "switch", "default": True,
      "purpose": "把听写稿另存一份，方便以后重译。",
      "after": "开且本次真的跑了 Whisper：写 Movie.en.asr.srt，不标 default。用了在线包或外挂则不写。"},
@@ -267,7 +264,7 @@ FIELDS: List[Dict[str, Any]] = [
      "purpose": "一批塞多少句。", "after": "建议不超过 30。"},
     {"pane": "model", "group": "大模型", "key": "parallel_workers", "label": "单任务翻译并发", "control": "number", "default": 3,
      "purpose": "单个任务内部免费引擎同时打多少个请求。队列始终一次只跑一个任务。",
-     "after": "建议 2–4。过大容易被免费接口限流。不等于多任务并行。"},
+     "after": "建议 2–4。过大容易被免费接口限流。这是一个任务内部的翻译并发，多个任务一起跑看「同时处理任务数」。"},
     {"pane": "model", "group": "大模型", "key": "context_window", "label": "上下文窗口", "control": "number", "default": 5,
      "purpose": "翻译时带上前后几句，避免人称和术语来回变。",
      "after": "现网设置有、批量路径没用。V1 批量必须带上。"},
@@ -316,6 +313,9 @@ FIELDS: List[Dict[str, Any]] = [
                  {"title": "叠行", "value": "stacked"}, {"title": "SDH", "value": "sdh"}],
      "purpose": "打开工作台时先挂哪些轨。",
      "after": "工作台里还能临时摘掉，方便对比挡不挡画面。"},
+    {"pane": "queue", "group": "队列", "key": "queue_workers", "label": "同时处理任务数", "control": "number", "default": 2,
+     "purpose": "队列里最多几个任务一起跑。",
+     "after": "默认 2。设成 1 就是一个接一个。最大 4。语音识别仍会排队，避免多个 Whisper 抢同一个模型。"},
     {"pane": "queue", "group": "队列", "key": "queue_offpeak_enabled", "label": "错峰只跑 P2", "control": "switch", "default": False,
      "purpose": "把低优先级任务留到夜里跑。",
      "after": "开：P2 只在时间窗里跑；P0 人工、P1 入库随时。"},
@@ -437,9 +437,7 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         elif control == "select":
             options = tuple(item["value"] for item in field.get("options") or [])
             aliases = {}
-            if key == "transfer_strategy":
-                aliases = TRANSFER_STRATEGY_ALIASES
-            elif key == "lang_stack":
+            if key == "lang_stack":
                 aliases = STACK_ALIASES
             elif key == "translate_backend":
                 aliases = BACKEND_ALIASES
@@ -464,6 +462,9 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     normalized["timeline_max_offset"] = min(300, max(1, float(normalized.get("timeline_max_offset") or 120)))
     normalized["timeline_min_offset"] = max(0, float(normalized.get("timeline_min_offset") or 0.2))
     normalized["parallel_workers"] = max(1, min(8, int(normalized.get("parallel_workers") or 3)))
+    normalized["queue_workers"] = max(1, min(4, int(normalized.get("queue_workers") or 2)))
+    if "online_search_enabled" not in raw and str(raw.get("transfer_strategy") or "") in {"translate_only", "ai_source_only", "只识别翻译"}:
+        normalized["online_search_enabled"] = False
     normalized["batch_size"] = max(1, min(40, int(normalized.get("batch_size") or 20)))
     normalized["watch_paths"] = join_multiline_paths(parse_multiline_paths(normalized.get("watch_paths")))
     normalized["strm_paths"] = join_multiline_paths(parse_multiline_paths(normalized.get("strm_paths")))

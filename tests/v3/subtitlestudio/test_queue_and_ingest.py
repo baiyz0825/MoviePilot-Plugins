@@ -17,6 +17,10 @@ def test_job_store_cut_in_does_not_touch_running(tmp_path):
     shared.test_job_store_cut_in_does_not_touch_running(tmp_path, gen="v3")
 
 
+def test_scheduler_runs_jobs_together(tmp_path):
+    shared.test_scheduler_runs_jobs_together(tmp_path, gen="v3")
+
+
 def test_scheduler_notifies_skipped_and_cancelled(tmp_path):
     shared.test_scheduler_notifies_skipped_and_cancelled(tmp_path, gen="v3")
 

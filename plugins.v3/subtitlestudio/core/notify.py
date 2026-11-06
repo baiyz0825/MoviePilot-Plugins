@@ -41,6 +41,16 @@ def normalize_notify_on(value: Any) -> List[str]:
     return events
 
 
+def claim_notification(job: Job) -> bool:
+    """同一个任务只允许推送一次。调用方拿到 True 后要立刻把任务写回。"""
+    payload = dict(job.payload or {})
+    if payload.get("notified"):
+        return False
+    payload["notified"] = True
+    job.payload = payload
+    return True
+
+
 def should_notify(config: Dict[str, Any] | None, job: Job) -> bool:
     config = config or {}
     if not config.get("send_notify"):

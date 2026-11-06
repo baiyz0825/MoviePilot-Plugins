@@ -59,10 +59,11 @@ class StudioServices:
         studio_log(
             self.plugin.host_logger,
             "info",
-            "队列已启动 event=%s watch=%s strm=%s workers=%s",
+            "队列已启动 event=%s watch=%s strm=%s queue=%s translate_workers=%s",
             config.get("ingest_on_event"),
             config.get("ingest_on_watch"),
             config.get("strm_enabled"),
+            config.get("queue_workers") or 2,
             config.get("parallel_workers"),
         )
         if config.get("ingest_on_watch"):

@@ -52,7 +52,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
     plugin_icon = "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg"
     plugin_color = "#0EA5E9"
     # V3 必须是 2.x，禁止和 V2 共用版本号
-    plugin_version = "2.0.13"
+    plugin_version = "2.0.14"
     plugin_author = "baiyz0825"
     author_url = "https://github.com/baiyz0825"
     plugin_config_prefix = CONFIG_PREFIX
@@ -227,7 +227,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
             identity={},
             trigger=trigger,
             priority="P1",
-            strategy=self._config.get("transfer_strategy") or "search_then_translate",
+            strategy="standard",
             config=self._config,
         )
 
@@ -252,7 +252,7 @@ class SubtitleStudio(StudioApiMixin, WorkflowMixin, _PluginBase):
                 identity=identity or identity_from_v3_pair("", ""),
                 trigger="event",
                 priority="P1",
-                strategy=self._config.get("transfer_strategy") or "search_then_translate",
+                strategy="standard",
                 config=self._config,
             )
             if job.status in {"pending", "running"}:

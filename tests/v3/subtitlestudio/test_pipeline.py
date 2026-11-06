@@ -5,8 +5,12 @@ def test_generation_uses_local_sidecar_and_skips_asr(tmp_path):
     shared.test_generation_uses_local_sidecar_and_skips_asr(tmp_path, gen="v3")
 
 
-def test_embedded_source_precedes_online_and_asr(tmp_path, monkeypatch):
-    shared.test_embedded_source_precedes_online_and_asr(tmp_path, monkeypatch, gen="v3")
+def test_online_source_precedes_local_sidecar(tmp_path):
+    shared.test_online_source_precedes_local_sidecar(tmp_path, gen="v3")
+
+
+def test_embedded_follows_failed_online_search(tmp_path, monkeypatch):
+    shared.test_embedded_follows_failed_online_search(tmp_path, monkeypatch, gen="v3")
 
 
 def test_rerun_skips_own_export_but_uses_original_sidecar(tmp_path):
