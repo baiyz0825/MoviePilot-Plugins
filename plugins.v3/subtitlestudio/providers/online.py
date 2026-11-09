@@ -11,11 +11,23 @@ from typing import Any, Callable, Dict, List
 from urllib.parse import quote
 
 from ..core.errors import looks_like_subtitle
+from ..core.language import canonical_language, is_bilingual_hint
 from ..core.logging import studio_log
 from .local import list_sidecars
 
 
 RESULT_HREF = re.compile(r'href="([^"]+)"[^>]*>([^<]+)')
+
+
+def _online_language_hint(title: str, metadata: str = "", *, reliable: bool = False) -> str:
+    """Keep unverified provider results unknown until their subtitle body is parsed."""
+    if is_bilingual_hint(title):
+        return "bilingual"
+    if reliable and metadata:
+        normalized = canonical_language(metadata)
+        if normalized != "source":
+            return normalized
+    return "source"
 
 
 class OnlineSearchService:
@@ -116,12 +128,14 @@ class OnlineSearchService:
         rows = []
         items = payload.get("sub", {}).get("subs") if isinstance(payload, dict) else []
         for item in items or []:
+            row_title = item.get("native_name") or item.get("videoname") or title
+            metadata_lang = item.get("language") or item.get("lang") or item.get("language_code") or ""
             rows.append({
                 "provider": "assrt",
-                "title": item.get("native_name") or item.get("videoname") or title,
+                "title": row_title,
                 "url": item.get("url") or "",
                 "download_url": item.get("url") or "",
-                "lang": "zh-Hans",
+                "lang": _online_language_hint(row_title, metadata_lang, reliable=bool(metadata_lang)),
                 "format": "ass" if str(item.get("native_name") or "").lower().endswith(".ass") else "",
             })
         return rows
@@ -138,13 +152,14 @@ class OnlineSearchService:
             if file_id:
                 # 真实下载需另调 /download；此处保留占位，best_download 会因无正文跳过并试下一条
                 download_url = f"{cfg.get('opensubtitles_api_url') or 'https://api.opensubtitles.com/api/v1'}/download"
+            row_title = attrs.get("release") or job.title
             rows.append({
                 "provider": "opensubtitles",
-                "title": attrs.get("release") or job.title,
+                "title": row_title,
                 "url": "",
                 "download_url": download_url,
                 "file_id": file_id,
-                "lang": (attrs.get("language") or "en"),
+                "lang": _online_language_hint(row_title, attrs.get("language") or "", reliable=True),
             })
         return rows
 
@@ -162,7 +177,14 @@ def parse_search_html(html: str, provider: str, root: str) -> List[Dict[str, Any
         if href.startswith("#"):
             continue
         url = href if href.startswith("http") else f"{root.rstrip('/')}/{href.lstrip('/')}"
-        rows.append({"provider": provider, "title": title.strip(), "url": url, "download_url": url, "lang": "zh-Hans"})
+        cleaned_title = title.strip()
+        rows.append({
+            "provider": provider,
+            "title": cleaned_title,
+            "url": url,
+            "download_url": url,
+            "lang": _online_language_hint(cleaned_title),
+        })
         if len(rows) >= 20:
             break
     return rows

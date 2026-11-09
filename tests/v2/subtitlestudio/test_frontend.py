@@ -50,6 +50,15 @@ def test_app_page_matches_mobile_contract(gen: str = GEN):
     assert "watch_paths" not in page or True
 
 
+def test_preview_multilanguage_rows_never_fallback_to_same_source(gen: str = GEN):
+    preview = _read("src/components/shared/PreviewPlayer.vue", gen=gen)
+    assert "const exact = cue?.texts?.[lang] || ''" in preview
+    assert "(props.langs?.length || 0) <= 1 ? sourceText(cue) : ''" in preview
+    assert "v-for=\"(line, index) in dialogueLines\"" in preview
+    assert "seen.has(identity)" in preview
+    assert "cue?.texts?.[lang] || cue?.texts?.source" not in preview
+
+
 def test_settings_use_textarea_and_host_controls(gen: str = GEN):
     settings = _read("src/components/shared/SettingsForm.vue", gen=gen)
     assert "VTextarea" in settings

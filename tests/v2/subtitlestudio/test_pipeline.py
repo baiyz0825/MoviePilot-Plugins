@@ -77,6 +77,62 @@ def test_online_source_precedes_local_sidecar(tmp_path: Path, gen: str = GEN):
     assert job.payload["subtitle_source"] == "online"
 
 
+def test_online_wrong_metadata_full_bilingual_export_chain(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    llm_calls = []
+
+    def llm(prompt, system="", role="translate"):
+        llm_calls.append((prompt, system, role))
+        match = re.search(r"\[([^\]]+)\]", prompt)
+        cue_id = match.group(1) if match else "j-chain-1"
+        return f'[{{"id":"{cue_id}","text":"这是一条英文字幕。"}}]'
+
+    pipeline = gen_mod.GenerationPipeline(
+        store,
+        lambda: {
+            "online_search_enabled": True,
+            "timeline_auto_align": False,
+            "translate_enabled": True,
+            "translate_backend": "llm_only",
+            "target_languages": ["zh-Hans", "en"],
+            "export_preset": "library_zh",
+            "export_layouts": ["stacked"],
+            "export_formats": ["srt", "ass"],
+            "overwrite_policy": "overwrite",
+            "enable_asr": False,
+            "effects_enabled": False,
+        },
+        searcher=lambda *_args, **_kwargs: {
+            "content": "1\n00:00:01,000 --> 00:00:03,000\nThis is an English subtitle.\n",
+            "filename": "wrongly-labelled.srt",
+            "lang": "zh-Hans",
+        },
+        llm=llm,
+    )
+    job = models.Job(job_id="j-chain", title="Movie", path=str(video), trigger="manual")
+    store.save_job(job)
+    saved = pipeline.run(job)
+    graph = store.get_graph(job.job_id)
+    assert saved.status == "success"
+    assert graph.source_lang == "en"
+    assert graph.cues[0].texts == {
+        "en": "This is an English subtitle.",
+        "zh-Hans": "这是一条英文字幕。",
+    }
+    assert len(llm_calls) == 1
+    outputs = [item for item in saved.payload["export"] if item.get("written")]
+    assert {item["format"] for item in outputs} == {"srt", "ass"}
+    for item in outputs:
+        body = Path(item["path"]).read_text(encoding="utf-8")
+        assert body.count("This is an English subtitle.") == 1
+        assert body.count("这是一条英文字幕。") == 1
+
+
 def test_embedded_follows_failed_online_search(tmp_path: Path, monkeypatch, gen: str = GEN):
     models = load_domain(gen, "core.models")
     store_mod = load_domain(gen, "storage.job_store")

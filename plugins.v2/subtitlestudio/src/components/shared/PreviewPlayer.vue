@@ -66,9 +66,35 @@ const dialogue = computed(() => {
 const notes = computed(() => active.value.filter(item => item.kind === 'note'))
 const showDialogue = computed(() => props.tracks.includes('dialogue') || props.tracks.includes('stacked') || props.tracks.includes('sdh'))
 
-function textOf(cue, lang) {
-  return cue?.texts?.[lang] || cue?.texts?.source || Object.values(cue?.texts || {})[0] || ''
+function sourceText(cue) {
+  const texts = cue?.texts || {}
+  const sourceLang = props.graph?.source_lang
+  return (sourceLang && texts[sourceLang]) || texts.source || Object.values(texts)[0] || ''
 }
+
+function textOf(cue, lang) {
+  if (!lang) return sourceText(cue)
+  const exact = cue?.texts?.[lang] || ''
+  if (exact) return exact
+  // A single-language preview may show the source as an explicit convenience.
+  // Multi-language rows are strict: a missing target stays missing.
+  return (props.langs?.length || 0) <= 1 ? sourceText(cue) : ''
+}
+
+function dialogueText(lang) {
+  return dialogue.value.map(item => textOf(item, lang)).filter(Boolean).join(' ')
+}
+
+const dialogueLines = computed(() => {
+  const seen = new Set()
+  return (props.langs || []).flatMap((lang) => {
+    const text = dialogueText(lang)
+    const identity = text.replace(/\s+/g, '').toLocaleLowerCase()
+    if (!text || seen.has(identity)) return []
+    seen.add(identity)
+    return [{ lang, text }]
+  })
+})
 
 function lineStyle(index, kind = 'dialogue') {
   const css = overlayCss(props.styleConfig, index, kind, fontScale.value)
@@ -78,7 +104,8 @@ function lineStyle(index, kind = 'dialogue') {
   if (kind === 'note') {
     return { ...css, top: `${Math.max(8, margin)}px`, bottom: 'auto' }
   }
-  const rank = props.stack === 'main_top' ? Math.max(0, (props.langs?.length || 1) - index - 1) : index
+  const visibleCount = dialogueLines.value?.length || 1
+  const rank = props.stack === 'main_top' ? Math.max(0, visibleCount - index - 1) : index
   return { ...css, bottom: `${margin + rank * gap}px`, top: 'auto', whiteSpace: 'pre-line' }
 }
 
@@ -105,13 +132,13 @@ function onTime(event) {
     <template v-if="showDialogue">
       <template>
         <div
-          v-for="(lang, index) in langs"
-          :key="lang"
+          v-for="(line, index) in dialogueLines"
+          :key="line.lang"
           class="ss-overlay dialogue"
           :class="[`rank${index + 1}`]"
           :style="lineStyle(index)"
         >
-          {{ dialogue.map(item => textOf(item, lang)).filter(Boolean).join(' ') }}
+          {{ line.text }}
         </div>
       </template>
     </template>

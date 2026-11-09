@@ -334,6 +334,149 @@ def test_delete_generated_subtitles_leaves_source_and_video(tmp_path: Path, gen:
     assert packager.delete_generated_subtitles(config, str(video)) == []
 
 
+def test_language_normalization_migrates_wrong_source_key(gen: str = GEN):
+    language = load_domain(gen, "core.language")
+    cuegraph = load_domain(gen, "core.cuegraph")
+    models = load_domain(gen, "core.models")
+    assert language.canonical_language("zh-Hant-HK") == "zh-Hant"
+    assert language.canonical_language("EN_us") == "en"
+    assert language.canonical_language("und") == "source"
+    assert language.translation_is_valid("This is an English subtitle.", "Another English sentence.", "zh-Hans", "en") is False
+    assert language.translation_is_valid("这是一个中文字幕。", "另一段中文字幕。", "en", "zh-Hans") is False
+    for unchanged in ("2026", "...", "https://example.com", "T-800", "NASA", "iPhone", "Alice Smith"):
+        assert language.translation_is_valid(unchanged, unchanged, "zh-Hans", "en") is True
+
+    parsed = cuegraph.parse_srt(
+        "1\n00:00:01,000 --> 00:00:03,000\nThis is an English subtitle.\n",
+        lang="zh-Hans",
+        job_id="wrong-meta",
+    )
+    assert parsed.source_lang == "en"
+    assert parsed.cues[0].texts == {"en": "This is an English subtitle."}
+
+    duplicated = models.CueGraph(
+        job_id="duplicate",
+        source_lang="zh-Hans",
+        cues=[models.Cue(
+            cue_id="1",
+            index=1,
+            start_ms=0,
+            end_ms=1000,
+            texts={"zh-Hans": "This is an English subtitle.", "en": "This is an English subtitle."},
+        )],
+    )
+    language.normalize_graph_source_language(duplicated)
+    assert duplicated.source_lang == "en"
+    assert duplicated.cues[0].texts == {"en": "This is an English subtitle."}
+    assert cuegraph.stacked_plain(duplicated.cues[0], ["zh-Hans", "en"]) == "This is an English subtitle."
+
+    already_corrected = models.CueGraph(
+        job_id="duplicate-corrected",
+        source_lang="en",
+        cues=[models.Cue(
+            cue_id="2",
+            index=1,
+            start_ms=0,
+            end_ms=1000,
+            texts={"en": "This is an English subtitle.", "zh-Hans": "This is an English subtitle."},
+        )],
+    )
+    language.normalize_graph_source_language(already_corrected)
+    assert already_corrected.cues[0].texts == {"en": "This is an English subtitle."}
+    assert any(issue.code == "mislabeled_source_duplicate" for issue in already_corrected.cues[0].issues)
+
+    uncertain = models.CueGraph(
+        job_id="short",
+        source_lang="zh-Hans",
+        cues=[models.Cue(cue_id="short-1", index=1, start_ms=0, end_ms=1000, texts={"zh-Hans": "Alice"})],
+    )
+    language.normalize_graph_source_language(uncertain)
+    assert uncertain.cues[0].texts == {"zh-Hans": "Alice"}
+    assert any(issue.code == "source_language_conflict_uncertain" for issue in uncertain.cues[0].issues)
+
+
+def test_bilingual_ass_merges_language_tracks_without_merging_speakers(gen: str = GEN):
+    cuegraph = load_domain(gen, "core.cuegraph")
+    content = """[Script Info]
+ScriptType: v4.00+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Chinese,Narrator,0,0,0,,你好世界，欢迎观看
+Dialogue: 0,0:00:01.00,0:00:03.00,English,Narrator,0,0,0,,Hello world, welcome
+Dialogue: 0,0:00:04.00,0:00:06.00,Chinese,Alice,0,0,0,,你先走
+Dialogue: 0,0:00:04.00,0:00:06.00,English,Bob,0,0,0,,I will stay
+Dialogue: 0,0:00:07.00,0:00:09.00,Note,,0,0,0,,{\\an8}Door opens
+Dialogue: 0,0:00:10.00,0:00:12.00,Subtitle,,0,0,0,,Regular dialogue
+Dialogue: 0,0:00:13.00,0:00:15.00,Chinese,Narrator2,0,0,0,,稍后再见
+Dialogue: 0,0:00:13.10,0:00:15.10,English,Narrator2,0,0,0,,See you later
+"""
+    graph = cuegraph.parse_ass(content, lang="bilingual", job_id="ass-bi")
+    first = graph.sorted_cues()[0]
+    assert len(graph.cues) == 5
+    assert first.texts == {"zh-Hans": "你好世界，欢迎观看", "en": "Hello world, welcome"}
+    assert len([cue for cue in graph.cues if cue.start_ms == 4000]) == 2
+    near_overlap = next(cue for cue in graph.cues if cue.start_ms == 13000)
+    assert near_overlap.end_ms == 15100
+    assert near_overlap.texts == {"zh-Hans": "稍后再见", "en": "See you later"}
+    assert len(graph.notes) == 1
+
+
+def test_bilingual_srt_vtt_split_and_uncertain_cases(gen: str = GEN):
+    cuegraph = load_domain(gen, "core.cuegraph")
+    bilingual = "1\n00:00:01,000 --> 00:00:03,000\n你好世界，欢迎观看\nHello world, welcome\n"
+    srt_graph = cuegraph.parse_srt(bilingual, lang="bilingual", job_id="srt-bi")
+    assert srt_graph.cues[0].texts == {"zh-Hans": "你好世界，欢迎观看", "en": "Hello world, welcome"}
+
+    vtt_graph = cuegraph.parse_vtt(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n你好世界，欢迎观看\nHello world, welcome\n",
+        lang="bilingual",
+        job_id="vtt-bi",
+    )
+    assert vtt_graph.cues[0].texts == srt_graph.cues[0].texts
+
+    mono = cuegraph.parse_srt(
+        "1\n00:00:01,000 --> 00:00:03,000\n- Open the door.\n- I cannot do that.\n",
+        job_id="mono",
+    )
+    assert mono.cues[0].texts == {"en": "- Open the door.\n- I cannot do that."}
+
+    uncertain = cuegraph.parse_srt(
+        "1\n00:00:01,000 --> 00:00:03,000\nT-800\n终结者\n",
+        lang="bilingual",
+        job_id="uncertain",
+    )
+    assert len(uncertain.cues[0].texts) == 1
+    assert any(issue.code == "bilingual_split_uncertain" for issue in uncertain.cues[0].issues)
+
+    mixed_line = cuegraph.parse_srt(
+        "1\n00:00:01,000 --> 00:00:03,000\nHello 你好\n",
+        job_id="mixed",
+    )
+    assert len(mixed_line.cues[0].texts) == 1
+    assert any(issue.code == "bilingual_split_uncertain" for issue in mixed_line.cues[0].issues)
+
+
+def test_job_store_enforces_normalized_cuegraph(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    store = store_mod.JobStore(tmp_path, "SubtitleStudio")
+    graph = models.CueGraph(
+        job_id="stored-graph",
+        source_lang="en",
+        cues=[models.Cue(
+            cue_id="stored-1",
+            index=1,
+            start_ms=0,
+            end_ms=1000,
+            texts={"en": "This is an English subtitle.", "zh-Hans": "This is an English subtitle."},
+        )],
+    )
+    store.save_graph(graph)
+    loaded = store.get_graph(graph.job_id)
+    assert loaded.source_lang == "en"
+    assert loaded.cues[0].texts == {"en": "This is an English subtitle."}
+
+
 def test_hidden_media_paths_roundtrip(tmp_path: Path, gen: str = GEN):
     store_mod = load_domain(gen, "storage.job_store")
     store = store_mod.JobStore(tmp_path, "SubtitleStudio")

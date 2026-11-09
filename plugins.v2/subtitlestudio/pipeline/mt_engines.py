@@ -10,6 +10,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
 
+from ..core.language import can_remain_unchanged, translation_validation_reason
 from ..core.logging import studio_log
 
 HttpFn = Callable[..., Any]
@@ -22,7 +23,7 @@ def _edge_lang(lang: str) -> str:
         "en": "en",
         "ja": "ja",
         "ko": "ko",
-        "source": "en",
+        "source": "auto",
     }
     return mapping.get(lang, lang)
 
@@ -36,24 +37,44 @@ class FreeMtRouter:
         self._max_consecutive_errors = max(2, int(config.get("mt_max_consecutive_errors") or 5))
 
     def translate_batch(self, texts: List[str], *, source: str, target: str, on_item=None) -> List[Optional[str]]:
+        """Try later engines for each missing or invalid result, not just whole-batch errors."""
         engines = list(self.config.get("mt_engines") or ["edge", "gtx"])
-        last_error = ""
+        results: List[Optional[str]] = [None] * len(texts)
+        pending = list(range(len(texts)))
         for engine in engines:
+            if not pending:
+                break
             if callable(self.cancel_check):
                 self.cancel_check()
+            functions = {
+                "edge": lambda text: self._edge_one(text, source, target),
+                "gtx": lambda text: self._gtx_one(text, source, target),
+                "deeplx": lambda text: self._deeplx_one(text, source, target),
+                "libre": lambda text: self._libre_one(text, source, target),
+            }
+            fn = functions.get(engine)
+            if fn is None:
+                studio_log(self.logger, "warning", "未知免费翻译引擎，已跳过：%s", engine)
+                continue
+            current = list(pending)
             try:
-                if engine == "edge":
-                    return self._map_texts(texts, lambda text: self._edge_one(text, source, target), engine, on_item=on_item)
-                if engine == "gtx":
-                    return self._map_texts(texts, lambda text: self._gtx_one(text, source, target), engine, on_item=on_item)
-                if engine == "deeplx":
-                    return self._map_texts(texts, lambda text: self._deeplx_one(text, source, target), engine, on_item=on_item)
-                if engine == "libre":
-                    return self._map_texts(texts, lambda text: self._libre_one(text, source, target), engine, on_item=on_item)
+                translated = self._map_texts([texts[index] for index in current], fn, engine)
             except Exception as exc:  # noqa: BLE001
-                last_error = str(exc)
                 studio_log(self.logger, "warning", "免费引擎 %s 失败：%s", engine, exc)
-        raise RuntimeError(last_error or "免费翻译引擎全部失败")
+                continue
+            for index, candidate in zip(current, translated):
+                reason = translation_validation_reason(texts[index], candidate or "", target, source)
+                if reason:
+                    studio_log(self.logger, "debug", "%s 译文无效，尝试下一线路 index=%s reason=%s", engine, index, reason)
+                    continue
+                results[index] = str(candidate or "").strip()
+            pending = [index for index in pending if not results[index]]
+        if callable(on_item):
+            for _item in texts:
+                on_item()
+        if pending:
+            studio_log(self.logger, "warning", "免费翻译仍有 %s/%s 句无有效译文 target=%s", len(pending), len(texts), target)
+        return results
 
     def _map_texts(self, texts: List[str], fn, engine: str, on_item=None) -> List[Optional[str]]:
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -75,7 +96,8 @@ class FreeMtRouter:
                 if callable(on_item):
                     on_item()
                 if consecutive >= self._max_consecutive_errors:
-                    raise RuntimeError(f"{engine} 连续失败过多")
+                    studio_log(self.logger, "debug", "%s 连续失败过多，保留已完成结果并切换线路", engine)
+                    break
             return results
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(fn, text): index for index, text in enumerate(texts)}
@@ -92,7 +114,8 @@ class FreeMtRouter:
                 if callable(on_item):
                     on_item()
                 if consecutive >= self._max_consecutive_errors * 2:
-                    raise RuntimeError(f"{engine} 连续失败过多")
+                    studio_log(self.logger, "debug", "%s 并发失败过多，保留已完成结果并切换线路", engine)
+                    break
         return results
 
     def _get(self, url: str, **kwargs: Any) -> Any:
@@ -112,7 +135,7 @@ class FreeMtRouter:
     def _gtx_one(self, text: str, source: str, target: str) -> Optional[str]:
         url = (
             "https://translate.googleapis.com/translate_a/single"
-            f"?client=gtx&sl={quote(source or 'auto')}&tl={quote(_edge_lang(target))}&dt=t&q={quote(text)}"
+            f"?client=gtx&sl={quote(_edge_lang(source or 'source'))}&tl={quote(_edge_lang(target))}&dt=t&q={quote(text)}"
         )
         payload = self._get(url)
         return _pick_gtx(payload, text)
@@ -123,7 +146,7 @@ class FreeMtRouter:
             raise RuntimeError("未配置 DeepLX 地址")
         payload = self._post(
             f"{url}/translate",
-            json_body={"text": text, "source_lang": source, "target_lang": target},
+            json_body={"text": text, "source_lang": _edge_lang(source or "source"), "target_lang": target},
         )
         if isinstance(payload, dict):
             return str(payload.get("data") or payload.get("text") or "") or None
@@ -135,11 +158,20 @@ class FreeMtRouter:
             raise RuntimeError("未配置 LibreTranslate 地址")
         payload = self._post(
             f"{url}/translate",
-            json_body={"q": text, "source": source or "auto", "target": target, "format": "text"},
+            json_body={"q": text, "source": _edge_lang(source or "source"), "target": target, "format": "text"},
         )
         if isinstance(payload, dict):
             return str(payload.get("translatedText") or "") or None
         return None
+
+
+def _different_candidate(value: Any, original: str) -> Optional[str]:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    if re.sub(r"\s+", "", candidate).casefold() == re.sub(r"\s+", "", str(original or "")).casefold():
+        return candidate if can_remain_unchanged(original) else None
+    return candidate
 
 
 def _pick_translated(payload: Any, original: str) -> Optional[str]:
@@ -148,13 +180,13 @@ def _pick_translated(payload: Any, original: str) -> Optional[str]:
         if isinstance(first, dict):
             translations = first.get("translations") or []
             if translations and isinstance(translations[0], dict):
-                return str(translations[0].get("text") or "") or None
+                return _different_candidate(translations[0].get("text"), original)
         if isinstance(first, str):
-            return first
+            return _different_candidate(first, original)
     if isinstance(payload, dict):
-        return str(payload.get("text") or payload.get("translation") or "") or None
-    if isinstance(payload, str) and payload.strip() and payload.strip() != original:
-        return payload.strip()
+        return _different_candidate(payload.get("text") or payload.get("translation"), original)
+    if isinstance(payload, str):
+        return _different_candidate(payload, original)
     return None
 
 
@@ -163,9 +195,9 @@ def _pick_gtx(payload: Any, original: str) -> Optional[str]:
         try:
             payload = json.loads(payload)
         except json.JSONDecodeError:
-            return payload if payload != original else None
+            return _different_candidate(payload, original)
     if isinstance(payload, list) and payload and isinstance(payload[0], list):
         chunks = [item[0] for item in payload[0] if isinstance(item, list) and item]
         text = "".join(str(item) for item in chunks if item)
-        return text or None
+        return _different_candidate(text, original)
     return None

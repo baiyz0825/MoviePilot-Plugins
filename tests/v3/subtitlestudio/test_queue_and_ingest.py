@@ -35,3 +35,19 @@ def test_search_html_parser_ignores_search_links():
 
 def test_translation_partial_accept_and_no_placeholder():
     shared.test_translation_partial_accept_and_no_placeholder(gen="v3")
+
+
+def test_wrong_language_metadata_migrates_and_enters_translation():
+    shared.test_wrong_language_metadata_migrates_and_enters_translation(gen="v3")
+
+
+def test_free_translation_rejects_original_and_tries_next_engine():
+    shared.test_free_translation_rejects_original_and_tries_next_engine(gen="v3")
+
+
+def test_invalid_free_and_llm_outputs_never_fill_target_key():
+    shared.test_invalid_free_and_llm_outputs_never_fill_target_key(gen="v3")
+
+
+def test_llm_prompt_names_source_and_each_target_language():
+    shared.test_llm_prompt_names_source_and_each_target_language(gen="v3")

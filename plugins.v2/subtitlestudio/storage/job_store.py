@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from ..core.language import normalize_graph_source_language
 from ..core.models import CueGraph, Job, PRIORITY_ORDER
 
 SCHEMA = """
@@ -327,6 +328,7 @@ class JobStore:
         return {str(row["path"]) for row in rows if row["path"]}
 
     def save_graph(self, graph: CueGraph) -> None:
+        graph = normalize_graph_source_language(graph)
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
@@ -345,7 +347,8 @@ class JobStore:
             ).fetchone()
         if not row or not row["graph"]:
             return None
-        return CueGraph.from_dict(json.loads(row["graph"]))
+        graph = CueGraph.from_dict(json.loads(row["graph"]))
+        return normalize_graph_source_language(graph)
 
     def counts(self) -> Dict[str, int]:
         with self._lock, self._connect() as conn:

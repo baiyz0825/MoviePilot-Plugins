@@ -9,6 +9,10 @@ def test_app_page_matches_mobile_contract():
     shared.test_app_page_matches_mobile_contract(gen="v3")
 
 
+def test_preview_multilanguage_rows_never_fallback_to_same_source():
+    shared.test_preview_multilanguage_rows_never_fallback_to_same_source(gen="v3")
+
+
 def test_settings_use_textarea_and_host_controls():
     shared.test_settings_use_textarea_and_host_controls(gen="v3")
 

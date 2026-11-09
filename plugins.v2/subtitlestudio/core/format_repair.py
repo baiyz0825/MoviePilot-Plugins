@@ -69,7 +69,7 @@ def _row_text(row: Any) -> str:
         return row.strip()
     if not isinstance(row, dict):
         return str(row or "").strip()
-    for key in ("zh", "text", "translation", "target", "src", "en"):
+    for key in ("text", "translation", "target", "zh", "en", "src"):
         if row.get(key):
             return str(row[key]).strip()
     return ""

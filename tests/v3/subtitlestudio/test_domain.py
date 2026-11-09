@@ -56,5 +56,21 @@ def test_delete_generated_subtitles_leaves_source_and_video(tmp_path):
     shared.test_delete_generated_subtitles_leaves_source_and_video(tmp_path, gen="v3")
 
 
+def test_language_normalization_migrates_wrong_source_key():
+    shared.test_language_normalization_migrates_wrong_source_key(gen="v3")
+
+
+def test_bilingual_ass_merges_language_tracks_without_merging_speakers():
+    shared.test_bilingual_ass_merges_language_tracks_without_merging_speakers(gen="v3")
+
+
+def test_bilingual_srt_vtt_split_and_uncertain_cases():
+    shared.test_bilingual_srt_vtt_split_and_uncertain_cases(gen="v3")
+
+
+def test_job_store_enforces_normalized_cuegraph(tmp_path):
+    shared.test_job_store_enforces_normalized_cuegraph(tmp_path, gen="v3")
+
+
 def test_hidden_media_paths_roundtrip(tmp_path):
     shared.test_hidden_media_paths_roundtrip(tmp_path, gen="v3")

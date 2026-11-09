@@ -9,7 +9,14 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Sequence
 
-from .models import Cue, CueGraph, LANG_FONT_SIZES
+from .language import (
+    canonical_language,
+    detect_text_language,
+    is_bilingual_hint,
+    normalize_graph_source_language,
+    split_bilingual_lines,
+)
+from .models import Cue, CueGraph, Issue, LANG_FONT_SIZES
 from .style import REFERENCE_PLAY_HEIGHT, ass_style_line, normalize_ass_style, style_sizes
 
 SRT_BLOCK = re.compile(
@@ -23,6 +30,16 @@ VTT_BLOCK = re.compile(
     re.MULTILINE,
 )
 TIMESTAMP_LINE = re.compile(r"^\d+\s*$|^\d{2}:\d{2}:\d{2}[,.]\d{3}")
+_ASS_NOTE_STYLE = re.compile(
+    r"(?:^|[ _.-])(?:note|sign|effect|title|top)(?:$|[ _.-])|注释|特效|顶部",
+    re.IGNORECASE,
+)
+_ASS_SDH_STYLE = re.compile(r"(?:^|[ _.-])(?:sdh|cc|hearing)(?:$|[ _.-])", re.IGNORECASE)
+_ASS_EN_STYLE = re.compile(r"(?:^|[ _.-])(?:en|eng|english|英文)(?:$|[ _.-])", re.IGNORECASE)
+_ASS_HANS_STYLE = re.compile(r"(?:^|[ _.-])(?:chs|sc|zh-cn|hans|简中|简体|中文)(?:$|[ _.-])", re.IGNORECASE)
+_ASS_HANT_STYLE = re.compile(r"(?:^|[ _.-])(?:cht|tc|zh-tw|hant|繁中|繁体)(?:$|[ _.-])", re.IGNORECASE)
+_ASS_JA_STYLE = re.compile(r"(?:^|[ _.-])(?:ja|jpn|japanese|日文|日语)(?:$|[ _.-])", re.IGNORECASE)
+_ASS_KO_STYLE = re.compile(r"(?:^|[ _.-])(?:ko|kor|korean|韩文|韩语)(?:$|[ _.-])", re.IGNORECASE)
 
 
 def clock_to_ms(text: str) -> int:
@@ -67,21 +84,40 @@ def _clean_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _texts_and_issues(text: str, lang: str, cue_id: str) -> tuple[Dict[str, str], List[Issue]]:
+    split, uncertain = split_bilingual_lines(text, lang)
+    if split:
+        return split, []
+    issues = []
+    if uncertain:
+        issues.append(Issue(
+            code="bilingual_split_uncertain",
+            message="检测到混合语言，但无法可靠按行拆轨；已保留原文",
+            cue_id=cue_id,
+        ))
+    key = canonical_language(lang)
+    return ({key: text} if text else {}), issues
+
+
 def parse_srt(content: str, *, lang: str = "source", job_id: str = "") -> CueGraph:
     cues: List[Cue] = []
     for index, match in enumerate(SRT_BLOCK.finditer(str(content or "")), start=1):
         text = _clean_text(match.group(4))
         start_ms = clock_to_ms(match.group(2))
         end_ms = clock_to_ms(match.group(3))
+        cue_id = f"{job_id or 'cue'}-{index}"
+        texts, issues = _texts_and_issues(text, lang, cue_id)
         cues.append(Cue(
-            cue_id=f"{job_id or 'cue'}-{index}",
+            cue_id=cue_id,
             index=index,
             start_ms=start_ms,
             end_ms=end_ms,
-            texts={lang: text} if text else {},
+            texts=texts,
+            issues=issues,
         ))
     duration = max((item.end_ms for item in cues), default=0)
-    return CueGraph(job_id=job_id, source_lang=lang, cues=cues, duration_ms=duration)
+    graph = CueGraph(job_id=job_id, source_lang=canonical_language(lang), cues=cues, duration_ms=duration)
+    return normalize_graph_source_language(graph)
 
 
 def parse_vtt(content: str, *, lang: str = "source", job_id: str = "") -> CueGraph:
@@ -89,19 +125,23 @@ def parse_vtt(content: str, *, lang: str = "source", job_id: str = "") -> CueGra
     cues: List[Cue] = []
     for index, match in enumerate(VTT_BLOCK.finditer(body), start=1):
         text = _clean_text(match.group(4))
+        cue_id = f"{job_id or 'cue'}-{index}"
+        texts, issues = _texts_and_issues(text, lang, cue_id)
         cues.append(Cue(
-            cue_id=f"{job_id or 'cue'}-{index}",
+            cue_id=cue_id,
             index=index,
             start_ms=clock_to_ms(match.group(2)),
             end_ms=clock_to_ms(match.group(3)),
-            texts={lang: text} if text else {},
+            texts=texts,
+            issues=issues,
         ))
-    return CueGraph(
+    graph = CueGraph(
         job_id=job_id,
-        source_lang=lang,
+        source_lang=canonical_language(lang),
         cues=cues,
         duration_ms=max((item.end_ms for item in cues), default=0),
     )
+    return normalize_graph_source_language(graph)
 
 
 def _split_ass_fields(payload: str) -> List[str]:
@@ -112,39 +152,140 @@ def _split_ass_fields(payload: str) -> List[str]:
     return parts
 
 
+def _ass_style_language(style: str) -> str:
+    value = str(style or "")
+    if _ASS_EN_STYLE.search(value):
+        return "en"
+    if _ASS_HANT_STYLE.search(value):
+        return "zh-Hant"
+    if _ASS_HANS_STYLE.search(value):
+        return "zh-Hans"
+    if _ASS_JA_STYLE.search(value):
+        return "ja"
+    if _ASS_KO_STYLE.search(value):
+        return "ko"
+    return "source"
+
+
+def _ass_kind(event_type: str, style: str, raw_text: str) -> str:
+    lowered = str(raw_text or "").lower()
+    if event_type.lower() == "comment" or "an8" in lowered or _ASS_NOTE_STYLE.search(style or ""):
+        return "note"
+    if _ASS_SDH_STYLE.search(style or ""):
+        return "sdh"
+    return "dialogue"
+
+
+def _ass_texts(text: str, lang: str, style: str, cue_id: str) -> tuple[Dict[str, str], List[Issue]]:
+    style_lang = _ass_style_language(style)
+    hint = style_lang if style_lang != "source" else lang
+    split, uncertain = split_bilingual_lines(text, hint)
+    if split:
+        return split, []
+    detected = detect_text_language(text, hint)
+    key = detected if detected != "source" else canonical_language(hint)
+    issues = []
+    if uncertain or (is_bilingual_hint(lang) and key == "source"):
+        issues.append(Issue(
+            code="bilingual_split_uncertain",
+            message="检测到混合语言 ASS 对白，但无法可靠拆轨；已保留原文",
+            cue_id=cue_id,
+        ))
+    return {key: text}, issues
+
+
+def _ass_overlap_ratio(left: Cue, right: Cue) -> float:
+    overlap = max(0, min(left.end_ms, right.end_ms) - max(left.start_ms, right.start_ms))
+    longest = max(1, left.end_ms - left.start_ms, right.end_ms - right.start_ms)
+    return overlap / longest
+
+
+def _can_merge_ass(record: Dict[str, Any], cue: Cue, speaker: str, style: str) -> bool:
+    existing = record["cue"]
+    if existing.kind != cue.kind or existing.kind not in {"dialogue", "sdh"}:
+        return False
+    left_speaker = str(record.get("speaker") or "").strip().casefold()
+    right_speaker = str(speaker or "").strip().casefold()
+    if bool(left_speaker) != bool(right_speaker):
+        return False
+    if left_speaker and left_speaker != right_speaker:
+        return False
+    left_langs = {canonical_language(key) for key, value in existing.texts.items() if value}
+    right_langs = {canonical_language(key) for key, value in cue.texts.items() if value}
+    if not left_langs or not right_langs or "source" in left_langs | right_langs:
+        return False
+    if left_langs & right_langs or len(left_langs | right_langs) > 2:
+        return False
+    exact = existing.start_ms == cue.start_ms and existing.end_ms == cue.end_ms
+    if not exact:
+        if abs(existing.start_ms - cue.start_ms) > 350 or abs(existing.end_ms - cue.end_ms) > 350:
+            return False
+        if _ass_overlap_ratio(existing, cue) < 0.88:
+            return False
+        # Near-overlap without actor names needs language-specific styles; this
+        # avoids merging unrelated simultaneous dialogue from two characters.
+        if not (left_speaker and left_speaker == right_speaker):
+            left_style_lang = _ass_style_language(str(record.get("style") or ""))
+            right_style_lang = _ass_style_language(style)
+            if "source" in {left_style_lang, right_style_lang} or left_style_lang == right_style_lang:
+                return False
+    return True
+
+
 def parse_ass(content: str, *, lang: str = "source", job_id: str = "") -> CueGraph:
-    cues: List[Cue] = []
+    records: List[Dict[str, Any]] = []
     notes: List[Cue] = []
-    index = 0
+    event_index = 0
     for match in ASS_DIALOGUE.finditer(str(content or "")):
         fields = _split_ass_fields(match.group(2))
         start_ms = _ass_clock_to_ms(fields[1])
         end_ms = _ass_clock_to_ms(fields[2])
         style = fields[3]
-        text = fields[9].replace("\\N", "\n").replace("\\n", "\n")
+        speaker = fields[4]
+        raw_text = fields[9]
+        text = raw_text.replace("\\N", "\n").replace("\\n", "\n")
         text = re.sub(r"\{[^}]*\}", "", text).strip()
         if not text:
             continue
-        index += 1
+        event_index += 1
+        cue_id = f"{job_id or 'cue'}-{event_index}"
+        texts, issues = _ass_texts(text, lang, style, cue_id)
         cue = Cue(
-            cue_id=f"{job_id or 'cue'}-{index}",
-            index=index,
+            cue_id=cue_id,
+            index=event_index,
             start_ms=start_ms,
             end_ms=end_ms,
-            texts={lang: text},
-            kind="note" if "an8" in fields[9].lower() or "note" in style.lower() else "dialogue",
+            texts=texts,
+            speaker=speaker,
+            kind=_ass_kind(match.group(1), style, raw_text),
+            issues=issues,
         )
         if cue.kind == "note":
             notes.append(cue)
+            continue
+        merged = next((record for record in reversed(records) if _can_merge_ass(record, cue, speaker, style)), None)
+        if merged:
+            existing = merged["cue"]
+            existing.texts.update(cue.texts)
+            existing.start_ms = min(existing.start_ms, cue.start_ms)
+            existing.end_ms = max(existing.end_ms, cue.end_ms)
+            for issue in cue.issues:
+                issue.cue_id = existing.cue_id
+            existing.issues.extend(cue.issues)
         else:
-            cues.append(cue)
-    return CueGraph(
+            records.append({"cue": cue, "speaker": speaker, "style": style})
+
+    cues = [record["cue"] for record in records]
+    for index, cue in enumerate(sorted(cues, key=lambda item: (item.start_ms, item.index)), start=1):
+        cue.index = index
+    graph = CueGraph(
         job_id=job_id,
-        source_lang=lang,
+        source_lang=canonical_language(lang),
         cues=cues,
         notes=notes,
         duration_ms=max((item.end_ms for item in cues + notes), default=0),
     )
+    return normalize_graph_source_language(graph)
 
 
 def _ass_clock_to_ms(text: str) -> int:
@@ -175,8 +316,13 @@ def merge_translation(graph: CueGraph, translations: Dict[str, Dict[str, str]]) 
 
 def render_srt(graph: CueGraph, lang: str, *, fallback_lang: str = "") -> str:
     blocks = []
+    requested = canonical_language(lang)
     for index, cue in enumerate(graph.sorted_cues(), start=1):
-        text = cue.text(lang) or (cue.text(fallback_lang) if fallback_lang else "") or cue.text()
+        text = cue.text(requested)
+        if not text and fallback_lang:
+            text = cue.text(canonical_language(fallback_lang))
+        if not text and requested == "source":
+            text = cue.text(graph.source_lang) or cue.text("source") or cue.text()
         if not text:
             continue
         blocks.append(
@@ -187,8 +333,13 @@ def render_srt(graph: CueGraph, lang: str, *, fallback_lang: str = "") -> str:
 
 def render_vtt(graph: CueGraph, lang: str, *, fallback_lang: str = "") -> str:
     lines = ["WEBVTT", ""]
+    requested = canonical_language(lang)
     for index, cue in enumerate(graph.sorted_cues(), start=1):
-        text = cue.text(lang) or (cue.text(fallback_lang) if fallback_lang else "") or cue.text()
+        text = cue.text(requested)
+        if not text and fallback_lang:
+            text = cue.text(canonical_language(fallback_lang))
+        if not text and requested == "source":
+            text = cue.text(graph.source_lang) or cue.text("source") or cue.text()
         if not text:
             continue
         lines.append(str(index))
@@ -233,7 +384,7 @@ def render_ass(
     """
     spec = normalize_ass_style(style)
     width, height = script_resolution(play_width, play_height)
-    used_langs = [item for item in langs if item] or ["source"]
+    used_langs = list(dict.fromkeys(canonical_language(item) for item in langs if item)) or ["source"]
     used_sizes = list(sizes or style_sizes(spec, len(used_langs)) or LANG_FONT_SIZES[: len(used_langs)])
     scaled_sizes = [max(8, int(size)) for size in used_sizes]
     outline_px = max(0, int(spec["outline"]))
@@ -284,17 +435,25 @@ def render_ass(
     events = ["Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for cue in graph.sorted_cues():
         if len(used_langs) == 1:
-            text = _ass_escape(cue.text(used_langs[0]) or cue.text())
+            requested = used_langs[0]
+            raw_text = cue.text(requested)
+            if not raw_text and requested == "source":
+                raw_text = cue.text(graph.source_lang) or cue.text("source") or cue.text()
+            text = _ass_escape(raw_text)
             if text:
                 events.append(_dialogue(cue, "Lang1", text))
         else:
             ordered = list(used_langs)
             if stack == "main_top":
                 ordered = list(reversed(ordered))
+            seen_texts = set()
             for rank, lang in enumerate(ordered, start=1):
-                text = _ass_escape(cue.text(lang))
-                if not text:
+                raw_text = cue.text(lang)
+                identity = re.sub(r"\s+", "", raw_text).casefold()
+                if not raw_text or identity in seen_texts:
                     continue
+                seen_texts.add(identity)
+                text = _ass_escape(raw_text)
                 style = f"Lang{used_langs.index(lang) + 1}"
                 events.append(_dialogue(cue, style, text, layer=rank))
     if include_notes:
@@ -337,8 +496,17 @@ def _dialogue(cue: Cue, style: str, text: str, layer: int = 0) -> str:
 
 
 def stacked_plain(cue: Cue, langs: Iterable[str], stack: str = "main_bottom") -> str:
-    """SRT/VTT 叠行只能换行，字号交给播放器。"""
-    ordered = [lang for lang in langs if cue.text(lang)]
+    """SRT/VTT 叠行只能换行，字号交给播放器；重复文本仅作末端防御。"""
+    ordered = [canonical_language(lang) for lang in langs if cue.text(canonical_language(lang))]
     if stack == "main_bottom":
         ordered = list(reversed(ordered))
-    return "\n".join(cue.text(lang) for lang in ordered)
+    lines = []
+    seen = set()
+    for lang in ordered:
+        text = cue.text(lang)
+        identity = re.sub(r"\s+", "", text).casefold()
+        if not text or identity in seen:
+            continue
+        seen.add(identity)
+        lines.append(text)
+    return "\n".join(lines)

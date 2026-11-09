@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..core.cuegraph import render_ass, render_srt, render_vtt, stacked_plain
 from ..core.embedded import probe_video_resolution
+from ..core.language import normalize_graph_source_language
 from ..core.models import Cue, CueGraph
 from ..core.naming import extra_tracks, export_plan, sanitize_stem
 from ..core.style import style_from_config
@@ -128,6 +129,7 @@ def render_plan_text(
     play_width: int = 0,
     play_height: int = 0,
 ) -> Optional[str]:
+    graph = normalize_graph_source_language(graph)
     kind = plan.get("kind") or "dialogue"
     if kind == "notes":
         if not graph.notes:

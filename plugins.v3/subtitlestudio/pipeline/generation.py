@@ -16,7 +16,7 @@ from ..core.errors import JobCancelled
 from ..core.web_research import web_research
 from ..core.format_repair import repair_asr_graph
 from ..core.history import resolve_library_path
-from ..core.language import canonical_language
+from ..core.language import canonical_language, normalize_graph_source_language
 from ..core.logging import studio_done, studio_log
 from ..core.models import CueGraph, Job
 from ..core.notify import should_notify
@@ -26,7 +26,6 @@ from ..storage.job_store import JobStore
 from .effects import EffectsBuilder
 from .timeline import align_to_audio
 from .translation import TranslationService
-from .timeline import align_to_audio
 
 
 class GenerationPipeline:
@@ -162,6 +161,9 @@ class GenerationPipeline:
                 latest.error = "字幕源为空（0 句）"
                 studio_log(self.logger, "error", "空 CueGraph job=%s", latest.job_id)
                 return self._finish(latest, config, started)
+            graph = normalize_graph_source_language(graph)
+            if asr_graph is not None:
+                asr_graph = normalize_graph_source_language(asr_graph)
             studio_log(
                 self.logger,
                 "info",
