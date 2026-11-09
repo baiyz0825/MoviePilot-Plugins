@@ -23,6 +23,8 @@ export function createStudioApi(api, pluginBase) {
     fields: () => get('/fields', {}, { feedback: 'silent' }),
     media: (q = '', mediaType = '') => get('/media', { q, media_type: mediaType }, { feedback: 'silent' }),
     refreshMedia: () => post('/media/refresh', {}, { feedback: 'all' }),
+    startStockScan: () => post('/media/scan', {}, { feedback: 'all' }),
+    stockScanStatus: () => get('/media/scan', {}, { feedback: 'silent' }),
     hideMedia: body => post('/media/hide', body, { feedback: 'all' }),
     jobs: (q = '', status = '') => get('/jobs', { q, status }, { feedback: 'silent' }),
     createJob: body => post('/jobs', body),

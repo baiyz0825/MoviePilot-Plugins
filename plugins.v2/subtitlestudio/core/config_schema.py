@@ -136,9 +136,9 @@ FIELDS: List[Dict[str, Any]] = [
      "purpose": "射手网(伪)的钥匙。", "after": "不填则该源是灰的，不会去请求。Key 只存在插件配置里。"},
     {"pane": "search", "group": "搜索", "key": "opensubtitles_api_key", "label": "OpenSubtitles API Key", "control": "password", "default": "",
      "purpose": "OpenSubtitles 的钥匙。", "after": "不填则该源是灰的。"},
-    {"pane": "export", "group": "导出", "key": "export_preset", "label": "导出预设", "control": "preset", "default": "library_zh",
+    {"pane": "export", "group": "导出", "key": "export_preset", "label": "导出预设", "control": "preset", "default": "fnos",
      "purpose": "一键改语言码、是否 default、默认勾哪些格式。",
-     "after": "点预设会改语言码和默认勾选，仍可手改。媒体库对齐 MoviePilot 整理：Movie.default.chi.zh-cn.srt。Plex 用 chi/eng。飞牛用 chs。Infuse/网页用 zh-CN 并勾 VTT。旧库用 chi / chi&eng。"},
+     "after": "新安装默认使用飞牛兼容的 zh/en 等单一语言后缀；社区指南示例为视频 Movie.mkv 配同目录 Movie.zh.srt。已有配置保留原来的预设，可在这里切换。MoviePilot 预设写 default.chi.zh-cn；Plex 用 chi/eng；Infuse/网页用 zh-CN 并勾 VTT。"},
     {"pane": "export", "group": "导出", "key": "target_languages", "label": "目标语种（有序，1–3）", "control": "lang-order",
      "default": ["zh-Hans"],
      "purpose": "这次要生成哪些文种。最少 1 个，最多 3 个。列表顺序就是主、次、再次。",
@@ -449,7 +449,7 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
                 aliases = RAR_ALIASES
             normalized[key] = _pick(incoming, options, str(default), aliases)
         elif control == "preset":
-            normalized[key] = incoming if incoming in PRESET_IDS else "library_zh"
+            normalized[key] = incoming if incoming in PRESET_IDS else "fnos"
         else:
             normalized[key] = incoming if incoming is not None else default
 

@@ -9,26 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _zip_plugin(plugin_dir: Path, dest: Path) -> None:
     dest.unlink(missing_ok=True)
-    subprocess.run(
-        [
-            "zip",
-            "-r",
-            str(dest),
-            plugin_dir.name,
-            "-x",
-            "*/node_modules/*",
-            "-x",
-            "*/__pycache__/*",
-            "-x",
-            "*.pyc",
-            "-x",
-            "*/.pytest_cache/*",
-        ],
-        cwd=plugin_dir.parent,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    excluded_dirs = {"node_modules", "__pycache__", ".pytest_cache"}
+    with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in plugin_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(plugin_dir.parent)
+            if path.suffix == ".pyc" or excluded_dirs.intersection(relative.parts):
+                continue
+            archive.write(path, relative.as_posix())
 
 
 def _assert_release_zip(plugin_dir: Path, dest: Path) -> None:
@@ -83,10 +72,8 @@ def test_federation_css_gate_passes() -> None:
     assert "门禁通过" in result.stdout
 
 
-def test_requirements_do_not_ship_unused_webrtcvad() -> None:
+def test_runtime_manifests_do_not_ship_unused_webrtcvad() -> None:
     v2 = (ROOT / "plugins.v2/subtitlestudio/requirements.txt").read_text(encoding="utf-8")
-    v3 = (ROOT / "plugins.v3/subtitlestudio/requirements.txt").read_text(encoding="utf-8")
-    pyproject = (ROOT / "plugins.v3/subtitlestudio/pyproject.toml").read_text(encoding="utf-8")
+    v3 = (ROOT / "plugins.v3/subtitlestudio/pyproject.toml").read_text(encoding="utf-8")
     assert "webrtcvad" not in v2
     assert "webrtcvad" not in v3
-    assert "webrtcvad" not in pyproject

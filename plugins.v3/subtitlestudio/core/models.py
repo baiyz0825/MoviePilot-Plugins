@@ -22,7 +22,7 @@ JOB_STATUSES = (
 PRIORITIES = ("P0", "P1", "P2")
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 
-TRIGGERS = ("event", "watch", "strm", "manual", "workflow", "command")
+TRIGGERS = ("event", "watch", "strm", "manual", "stock_scan", "workflow", "command")
 
 STRATEGIES = {
     "standard": "默认流程",

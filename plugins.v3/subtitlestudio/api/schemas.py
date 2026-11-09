@@ -39,6 +39,21 @@ try:
         hidden: int = 0
         deleted_files: List[str] = Field(default_factory=list)
 
+    class StockScanData(_Extra):
+        scan_id: str = ""
+        status: str = "idle"
+        started: bool = False
+        scanned: int = 0
+        total: int = 0
+        queued: int = 0
+        skipped: int = 0
+        failed: int = 0
+        target_languages: List[str] = Field(default_factory=list)
+        current_title: str = ""
+        started_at: str = ""
+        finished_at: str = ""
+        error: str = ""
+
     class JobData(_Extra):
         job_id: str = ""
         title: str = ""
@@ -94,6 +109,9 @@ except Exception:  # noqa: BLE001 — 单测环境可能没有 pydantic
     class HideMediaData:  # type: ignore[no-redef]
         pass
 
+    class StockScanData:  # type: ignore[no-redef]
+        pass
+
     class JobData:  # type: ignore[no-redef]
         pass
 
@@ -126,6 +144,8 @@ _PAYLOADS = {
     ("/fields", "GET"): FieldsData,
     ("/media", "GET"): MediaListData,
     ("/media/refresh", "POST"): MediaListData,
+    ("/media/scan", "POST"): StockScanData,
+    ("/media/scan", "GET"): StockScanData,
     ("/media/hide", "POST"): HideMediaData,
     ("/jobs", "GET"): JobListData,
     ("/jobs", "POST"): JobData,

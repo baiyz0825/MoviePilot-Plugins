@@ -99,12 +99,13 @@ class JobScheduler:
         config: Optional[Dict[str, Any]] = None,
         payload: Optional[Dict[str, Any]] = None,
         force: bool = False,
+        recheck_success: bool = False,
     ) -> Job:
         identity = identity or {}
         if config is None:
             getter = getattr(self, "config_getter", None)
             config = getter() if callable(getter) else {}
-        if trigger != "manual" and not force:
+        if trigger != "manual" and not force and not recheck_success:
             completed = self.store.find_success_by_path(path)
             if completed:
                 studio_log(self.logger, "info", "自动入队跳过已有成功任务 job=%s trigger=%s path=%s", completed.job_id, trigger, path)
@@ -134,7 +135,8 @@ class JobScheduler:
             if active and active.status in {"pending", "running"}:
                 studio_log(self.logger, "info", "路径已有活动任务，跳过重复入队 job=%s path=%s", active.job_id, path)
                 return active
-            if not self.debouncer.allow(identity, path):
+            allowed_by_debouncer = self.debouncer.allow(identity, path)
+            if not allowed_by_debouncer and not recheck_success:
                 studio_log(self.logger, "info", "5 分钟防抖，跳过重复入队 trigger=%s path=%s", trigger, path)
                 existing = active or self.store.find_active_by_path(path, within_seconds=self.debouncer.window_seconds)
                 if existing:

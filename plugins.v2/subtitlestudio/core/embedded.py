@@ -72,8 +72,13 @@ def probe_video_resolution(path: str, logger: Any = None) -> tuple:
     return width, height
 
 
-def probe_subtitle_streams(path: str, logger: Any = None) -> List[Dict[str, Any]]:
-    """ffprobe 扫描字幕流，返回 [{index, codec, language, title}]，跳过图形字幕。"""
+def probe_subtitle_streams(
+    path: str,
+    logger: Any = None,
+    *,
+    include_graphics: bool = False,
+) -> List[Dict[str, Any]]:
+    """ffprobe 扫描字幕流；默认跳过图形字幕，库存检测可只读其语言元数据。"""
     try:
         result = subprocess.run(
             ["ffprobe", "-v", "quiet", "-print_format", "json",
@@ -95,7 +100,7 @@ def probe_subtitle_streams(path: str, logger: Any = None) -> List[Dict[str, Any]
     streams: List[Dict[str, Any]] = []
     for item in data.get("streams") or []:
         codec = str(item.get("codec_name") or "")
-        if codec in SKIP_CODECS:
+        if codec in SKIP_CODECS and not include_graphics:
             continue
         streams.append({
             "index": int(item.get("index") or 0),

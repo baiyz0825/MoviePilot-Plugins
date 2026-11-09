@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .core.logging import studio_log
+from .ingest.stock_scan import StockSubtitleScan
 from .ingest.watch import WatchService, strm_paths_from_config, watch_paths_from_config
 from .pipeline.asr import transcribe
 from .pipeline.generation import GenerationPipeline
@@ -51,6 +52,9 @@ class StudioServices:
             notify=plugin.notify_job,
         )
         self.pipeline = pipeline
+        self.stock_scan = StockSubtitleScan(
+            self.catalog, self.scheduler, self.store, plugin.current_config, plugin.host_logger
+        )
         self.watch = WatchService(plugin.ingest_watched_file, plugin.host_logger)
         self.strm_watch = WatchService(plugin.ingest_watched_file, plugin.host_logger)
 
@@ -72,6 +76,7 @@ class StudioServices:
             self.strm_watch.start(strm_paths_from_config(config), strm=True)
 
     def stop(self) -> None:
+        self.stock_scan.stop()
         self.scheduler.stop()
         self.watch.stop()
         self.strm_watch.stop()

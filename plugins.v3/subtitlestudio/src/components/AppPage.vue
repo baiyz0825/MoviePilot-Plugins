@@ -33,6 +33,9 @@ const posterObjectUrls = ref({})
 const loadingPosterUrls = ref(new Set())
 let posterObserver
 const mediaCounts = ref({ files: 0, groups: 0 })
+const stockScan = ref({ status: 'idle', scanned: 0, total: 0, queued: 0, skipped: 0, failed: 0 })
+const stockScanStarting = ref(false)
+let stockScanTimer = null
 const mediaDetail = ref(null)
 const selectedPaths = ref({})
 const submitting = ref(false)
@@ -59,7 +62,7 @@ const selectedFiles = computed(() => (mediaDetail.value?.files || []).filter(ite
 const enqueueHasStrm = computed(() => (enqueueForm.items || []).some(item => item?.is_strm || String(item?.path || '').toLowerCase().endsWith('.strm')))
 
 const STATUS_LABELS = { pending: '等待', running: '运行中', success: '成功', failed: '失败', skipped: '跳过', cancelled: '已取消' }
-const TRIGGER_LABELS = { event: '事件', watch: '监控', strm: 'STRM', manual: '手动', workflow: '工作流', command: '命令' }
+const TRIGGER_LABELS = { event: '事件', watch: '监控', strm: 'STRM', manual: '手动', stock_scan: '存量扫描', workflow: '工作流', command: '命令' }
 const TRACK_LABELS = { dialogue: '对白', notes: '顶注', stacked: '叠行', sdh: 'SDH' }
 const statusFilters = [
   { value: '', label: '全部' },
@@ -180,7 +183,7 @@ async function reload() {
     config.value = { ...cfg }
     fields.value = fieldData.fields || []
     previewTracks.value = cfg.preview_tracks_default || ['dialogue', 'notes']
-    await Promise.all([loadMedia(), loadJobs()])
+    await Promise.all([loadMedia(), loadJobs(), loadStockScanStatus()])
   } finally {
     loading.value = false
   }
@@ -207,6 +210,48 @@ async function refreshLibrary() {
     toast.error?.(error?.message || '拉取媒体库失败')
   } finally {
     loading.value = false
+  }
+}
+
+function syncStockScanPolling() {
+  if (stockScan.value?.status === 'running') {
+    if (!stockScanTimer) stockScanTimer = setInterval(() => { loadStockScanStatus() }, 1600)
+  } else if (stockScanTimer) {
+    clearInterval(stockScanTimer)
+    stockScanTimer = null
+  }
+}
+
+async function loadStockScanStatus() {
+  const wasRunning = stockScan.value?.status === 'running'
+  try {
+    stockScan.value = await pluginApi.value.stockScanStatus() || { status: 'idle' }
+    syncStockScanPolling()
+    if (wasRunning && stockScan.value?.status !== 'running') {
+      await Promise.all([loadMedia(), loadJobs()])
+      if (stockScan.value?.status === 'completed') {
+        toast.success?.(`存量扫描完成：入队 ${stockScan.value.queued || 0} 条，跳过 ${stockScan.value.skipped || 0} 条`)
+      }
+    }
+  } catch {
+    // A status poll is silent; the next interval can recover from transient API failures.
+  }
+}
+
+async function startStockScan() {
+  if (stockScanStarting.value || stockScan.value?.status === 'running') return
+  const targets = (config.value.target_languages || ['zh-Hans']).map(langLabel).join('、')
+  if (!(await confirm(`将扫描已入库记录和配置的媒体库目录，检查外挂字幕及可识别的内嵌字幕。只有全部目标语言（${targets}）都已存在的媒体会跳过；其余会以 P1 加入队列。扫描可能持续一段时间，是否开始？`))) return
+  stockScanStarting.value = true
+  try {
+    stockScan.value = await pluginApi.value.startStockScan() || { status: 'idle' }
+    syncStockScanPolling()
+    if (stockScan.value?.started) toast.success?.('存量字幕扫描已开始，可在此查看进度')
+    else if (stockScan.value?.status === 'running') toast.success?.('存量字幕扫描正在运行')
+  } catch (error) {
+    toast.error?.(error?.message || '启动存量扫描失败')
+  } finally {
+    stockScanStarting.value = false
   }
 }
 
@@ -547,6 +592,7 @@ function applyModel(model) {
 onMounted(reload)
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (stockScanTimer) clearInterval(stockScanTimer)
   revokePreview()
   posterObserver?.disconnect()
   Object.values(posterObjectUrls.value).forEach(url => URL.revokeObjectURL(url))
@@ -615,6 +661,37 @@ defineExpose({ reload, loadStatus: reload })
             <VChip :color="subtitleFilter === 'has' ? 'primary' : undefined" @click="subtitleFilter = 'has'">已有字幕</VChip>
             <VChip :color="subtitleFilter === 'missing' ? 'primary' : undefined" @click="subtitleFilter = 'missing'">没有字幕</VChip>
           </div>
+          <div class="d-flex align-center ga-2 flex-wrap mb-3">
+            <VBtn
+              size="small"
+              color="primary"
+              variant="tonal"
+              class="ss-touch"
+              :disabled="stockScan.status === 'running'"
+              :loading="stockScanStarting"
+              @click="startStockScan"
+            >
+              <VIcon start icon="mdi-text-box-search-outline" />
+              {{ stockScan.status === 'running' ? '正在扫描存量媒体' : '一次性扫描缺少目标字幕' }}
+            </VBtn>
+            <span class="text-caption text-medium-emphasis">命中全部目标语言的内嵌或外挂字幕才跳过</span>
+          </div>
+          <VAlert
+            v-if="stockScan.status !== 'idle'"
+            :type="stockScan.status === 'failed' ? 'error' : stockScan.status === 'completed' ? 'success' : stockScan.status === 'running' ? 'info' : 'warning'"
+            variant="tonal"
+            class="mb-3"
+          >
+            <div>
+              存量扫描 {{ stockScan.status === 'running' ? '进行中' : stockScan.status === 'completed' ? '完成' : stockScan.status === 'failed' ? '失败' : '已停止' }}
+              · 已检查 {{ stockScan.scanned || 0 }}/{{ stockScan.total || 0 }}
+              · 已入队 {{ stockScan.queued || 0 }}
+              · 已跳过 {{ stockScan.skipped || 0 }}
+              <template v-if="stockScan.failed">· 检查失败 {{ stockScan.failed }}</template>
+            </div>
+            <div v-if="stockScan.current_title" class="text-caption mt-1">当前：{{ stockScan.current_title }}</div>
+            <div v-if="stockScan.error" class="text-caption mt-1">{{ stockScan.error }}</div>
+          </VAlert>
           <div class="d-flex ga-2 mb-3">
             <VBtn size="small" variant="text" class="ss-touch" @click="toggleVisibleGroups(true)">全选</VBtn>
             <VBtn size="small" variant="text" class="ss-touch" @click="toggleVisibleGroups(false)">清空</VBtn>

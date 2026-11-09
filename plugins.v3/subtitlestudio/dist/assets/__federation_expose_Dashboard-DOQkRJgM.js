@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { c as createStudioApi } from './studioApi-CUfZ3-lv.js';
+import { c as createStudioApi } from './studioApi-pMXn-9A1.js';
 
 const {createElementVNode:_createElementVNode,createTextVNode:_createTextVNode,resolveComponent:_resolveComponent,withModifiers:_withModifiers,withCtx:_withCtx,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,createVNode:_createVNode,toDisplayString:_toDisplayString} = await importShared('vue');
 

@@ -32,6 +32,8 @@ def build_api_routes(plugin) -> List[Dict[str, Any]]:
         _route("/fields", plugin.api_fields, ["GET"], "设置页字段合同"),
         _route("/media", plugin.api_list_media, ["GET"], "媒体目录"),
         _route("/media/refresh", plugin.api_refresh_media, ["POST"], "拉取整理记录"),
+        _route("/media/scan", plugin.api_start_stock_scan, ["POST"], "扫描存量缺失字幕"),
+        _route("/media/scan", plugin.api_stock_scan_status, ["GET"], "读取存量扫描进度"),
         _route("/media/hide", plugin.api_hide_media, ["POST"], "从列表移除媒体"),
         _route("/jobs", plugin.api_list_jobs, ["GET"], "任务队列"),
         _route("/jobs", plugin.api_create_job, ["POST"], "入队"),
@@ -176,6 +178,14 @@ class StudioApiMixin:
 
     def api_refresh_media(self) -> Dict[str, Any]:
         return self.api_list_media(force=True)
+
+    def api_start_stock_scan(self) -> Dict[str, Any]:
+        state = self.services.stock_scan.start()
+        message = "存量字幕扫描已启动" if state.get("started") else "存量字幕扫描正在运行"
+        return ok(state, message)
+
+    def api_stock_scan_status(self) -> Dict[str, Any]:
+        return ok(self.services.stock_scan.status())
 
     def api_hide_media(self, body: Dict[str, Any] = None) -> Dict[str, Any]:
         data = body or {}

@@ -22,6 +22,7 @@ TRIGGER_LABELS = {
     "watch": "目录监控",
     "strm": "STRM",
     "manual": "手动提交",
+    "stock_scan": "存量扫描",
     "workflow": "工作流",
     "command": "远程命令",
 }

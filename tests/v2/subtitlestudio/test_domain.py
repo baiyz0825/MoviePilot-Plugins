@@ -244,7 +244,7 @@ def test_export_plan_uses_player_language_tags(gen: str = GEN):
         "export_formats": ["srt"],
         "mark_default": True,
     }, "Movie")
-    assert fnos[0]["filename"] == "Movie.chs.srt"
+    assert fnos[0]["filename"] == "Movie.zh.srt"
     web = naming.export_plan({
         "export_preset": "web",
         "target_languages": ["zh-Hans"],

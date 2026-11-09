@@ -19,6 +19,7 @@ from ..core.history import resolve_library_path
 from ..core.language import canonical_language, normalize_graph_source_language
 from ..core.logging import studio_done, studio_log
 from ..core.models import CueGraph, Job
+from ..core.naming import LANG_CATALOG
 from ..core.notify import should_notify
 from ..ingest.gates import is_strm_path
 from ..packager.export_pack import write_export_pack
@@ -104,6 +105,16 @@ class GenerationPipeline:
         started = time.monotonic()
         config = dict(self.config_getter() or {})
         latest = self.store.get_job(job.job_id) or job
+        stock_scan_targets = latest.payload.get("stock_scan_missing_languages")
+        if isinstance(stock_scan_targets, list):
+            selected = []
+            for value in stock_scan_targets:
+                language = canonical_language(value)
+                if language in LANG_CATALOG and language not in selected:
+                    selected.append(language)
+            if selected:
+                config["target_languages"] = selected
+                studio_log(self.logger, "info", "存量扫描任务只补齐缺少语种 job=%s langs=%s", latest.job_id, selected)
         if latest.payload.get("overwrite"):
             config["overwrite_policy"] = "overwrite"
             studio_log(self.logger, "info", "本次重译覆盖已有字幕 job=%s", latest.job_id)

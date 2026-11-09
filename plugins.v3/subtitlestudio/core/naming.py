@@ -12,7 +12,7 @@ ASR 原轨只有本次真的跑了 Whisper 才写，不标 default。
 - Jellyfin：点分 token，语言与 default/sdh 任意顺序
 - Plex：ISO 639-1/2，`chi` / `eng`，不认 default
 - Infuse：同目录、同 stem；中文官方建议 `cn`，也认 `zh-CN`
-- 飞牛影视：认 `chs`，不认 `zh-Hans`
+- 飞牛影视：社区指南示例为同目录同主体名 `.zh.srt`；预设使用 `.zh` / `.en` 等语言后缀，不写 `.default`
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ LANG_CATALOG = {
             "library_zh": "chi.zh-cn",
             "plex": "chi",
             "web": "zh-CN",
-            "fnos": "chs",
+            "fnos": "zh",
             "legacy": "chi",
         },
     },
@@ -59,7 +59,7 @@ LANG_CATALOG = {
             "library_zh": "zh-tw",
             "plex": "cht",
             "web": "zh-TW",
-            "fnos": "cht",
+            "fnos": "zh-TW",
             "legacy": "cht",
         },
     },
@@ -69,7 +69,7 @@ LANG_CATALOG = {
             "library_zh": "eng",
             "plex": "eng",
             "web": "en",
-            "fnos": "eng",
+            "fnos": "en",
             "legacy": "eng",
         },
     },
@@ -79,7 +79,7 @@ LANG_CATALOG = {
             "library_zh": "ja",
             "plex": "jpn",
             "web": "ja",
-            "fnos": "jpn",
+            "fnos": "ja",
             "legacy": "jpn",
         },
     },
@@ -89,7 +89,7 @@ LANG_CATALOG = {
             "library_zh": "ko",
             "plex": "kor",
             "web": "ko",
-            "fnos": "kor",
+            "fnos": "ko",
             "legacy": "kor",
         },
     },
@@ -112,7 +112,7 @@ PRESETS = {
     },
     "fnos": {
         "label": "飞牛影视",
-        "hint": "chs · 飞牛不认 zh-Hans",
+        "hint": "zh / en · 同主体名，不标 default",
         "mark_default": False,
         "formats": ["srt"],
         "flag_first": False,
@@ -144,7 +144,7 @@ def canonical_lang(lang_id: str) -> str:
 def lang_code(lang_id: str, preset: str) -> str:
     lang = canonical_lang(lang_id)
     item = LANG_CATALOG.get(lang) or LANG_CATALOG["zh-Hans"]
-    return item["codes"].get(preset) or item["codes"]["library_zh"]
+    return item["codes"].get(preset) or item["codes"]["fnos"]
 
 
 def font_size_for_rank(rank: int, config: Dict[str, Any] | None = None) -> int:
@@ -203,7 +203,9 @@ def _stacked_filename(stem: str, codes: Sequence[str], fmt: str, *, preset: str,
     if preset == "legacy":
         return build_filename(stem, ["&".join(codes)], fmt, flag_first=flag_first)
     if preset == "fnos":
-        return build_filename(stem, ["&".join(codes)], fmt, flag_first=flag_first)
+        # SRT 本身没有语言元数据；飞牛示例按同名文件加单一语言后缀。
+        # 叠行内容按第一目标语言标记，避免组合语言码被播放器显示为未知语言。
+        return build_filename(stem, [codes[0] if codes else "zh"], fmt, flag_first=flag_first)
     # 叠行文件只标主语种。Jellyfin 会把最后一个 token 当语言，写成 zh-CN.en 会被认成英文。
     primary = codes[0] if codes else "chi.zh-cn"
     return build_filename(stem, [primary], fmt, title="bilingual", flag_first=flag_first)
@@ -211,7 +213,7 @@ def _stacked_filename(stem: str, codes: Sequence[str], fmt: str, *, preset: str,
 
 def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
     """语种 × 版式 × 格式 的笛卡尔积。特效 / SDH / ASR 由调用方另加。"""
-    preset = str(config.get("export_preset") or "library_zh")
+    preset = str(config.get("export_preset") or "fnos")
     languages = list(config.get("target_languages") or ["zh-Hans"])[:3]
     layouts = [item for item in (config.get("export_layouts") or ["mono"]) if item in LAYOUTS]
     formats = [item for item in (config.get("export_formats") or ["srt"]) if item in FORMATS]
@@ -276,7 +278,7 @@ def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
 
 def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, source_lang: str = "en") -> List[Dict[str, Any]]:
     """特效 / SDH / ASR 原轨。不进乘法，各有开关。"""
-    preset = str(config.get("export_preset") or "library_zh")
+    preset = str(config.get("export_preset") or "fnos")
     files: List[Dict[str, Any]] = []
     primary = (config.get("target_languages") or ["zh-Hans"])[0]
     flag_first = _flag_first(preset)
@@ -325,8 +327,8 @@ def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, so
 def apply_preset(config: Dict[str, Any], preset: str) -> Dict[str, Any]:
     """点预设只改默认勾选，仍可手改。Plex / 飞牛强制关掉 default。"""
     next_config = dict(config)
-    spec = PRESETS.get(preset) or PRESETS["library_zh"]
-    next_config["export_preset"] = preset if preset in PRESETS else "library_zh"
+    spec = PRESETS.get(preset) or PRESETS["fnos"]
+    next_config["export_preset"] = preset if preset in PRESETS else "fnos"
     next_config["mark_default"] = bool(spec["mark_default"])
     formats = list(next_config.get("export_formats") or [])
     for item in spec["formats"]:

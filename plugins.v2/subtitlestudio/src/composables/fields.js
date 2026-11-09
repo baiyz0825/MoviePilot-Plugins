@@ -9,17 +9,17 @@ export const LANGS = [
 export const PRESETS = [
   { value: 'library_zh', title: '媒体库 / MoviePilot', hint: 'default.chi.zh-cn · 对齐整理记录' },
   { value: 'plex', title: 'Plex', hint: 'chi / eng · 不标 default' },
-  { value: 'fnos', title: '飞牛影视', hint: 'chs · 飞牛不认 zh-Hans' },
+  { value: 'fnos', title: '飞牛影视', hint: 'zh / en · 同主体名，不标 default' },
   { value: 'web', title: 'Infuse / 网页', hint: 'zh-CN · 再勾 VTT' },
   { value: 'legacy', title: '兼容旧库', hint: 'chi / chi&eng' },
 ]
 
 const LANG_CODES = {
-  'zh-Hans': { library_zh: 'chi.zh-cn', plex: 'chi', web: 'zh-CN', fnos: 'chs', legacy: 'chi' },
-  'zh-Hant': { library_zh: 'zh-tw', plex: 'cht', web: 'zh-TW', fnos: 'cht', legacy: 'cht' },
-  en: { library_zh: 'eng', plex: 'eng', web: 'en', fnos: 'eng', legacy: 'eng' },
-  ja: { library_zh: 'ja', plex: 'jpn', web: 'ja', fnos: 'jpn', legacy: 'jpn' },
-  ko: { library_zh: 'ko', plex: 'kor', web: 'ko', fnos: 'kor', legacy: 'kor' },
+  'zh-Hans': { library_zh: 'chi.zh-cn', plex: 'chi', web: 'zh-CN', fnos: 'zh', legacy: 'chi' },
+  'zh-Hant': { library_zh: 'zh-tw', plex: 'cht', web: 'zh-TW', fnos: 'zh-TW', legacy: 'cht' },
+  en: { library_zh: 'eng', plex: 'eng', web: 'en', fnos: 'en', legacy: 'eng' },
+  ja: { library_zh: 'ja', plex: 'jpn', web: 'ja', fnos: 'ja', legacy: 'jpn' },
+  ko: { library_zh: 'ko', plex: 'kor', web: 'ko', fnos: 'ko', legacy: 'kor' },
 }
 
 export const PANES = [
@@ -139,7 +139,7 @@ export function overlayCss(style, rank = 0, kind = 'dialogue', scale = 1) {
 }
 
 function langCode(lang, preset) {
-  return LANG_CODES[lang]?.[preset] || LANG_CODES[lang]?.library_zh || lang
+  return LANG_CODES[lang]?.[preset] || LANG_CODES[lang]?.fnos || lang
 }
 
 function buildFilename(stem, langs, ext, { title = '', flags = [], flagFirst = false } = {}) {
@@ -170,7 +170,7 @@ export function applyPreset(config, preset) {
 }
 
 export function exportPreview(config, stem = 'Movie') {
-  const preset = config.export_preset || 'library_zh'
+  const preset = config.export_preset || 'fnos'
   const langs = (config.target_languages || ['zh-Hans']).slice(0, 3)
   const layouts = config.export_layouts || ['mono']
   const formats = config.export_formats || ['srt']
@@ -185,7 +185,9 @@ export function exportPreview(config, stem = 'Movie') {
       }
       if (layout === 'stacked' && langs.length > 1) {
         const codes = langs.map(item => langCode(item, preset))
-        if (preset === 'legacy' || preset === 'fnos') {
+        if (preset === 'fnos') {
+          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }))
+        } else if (preset === 'legacy') {
           files.push(buildFilename(stem, [codes.join('&')], fmt, { flagFirst }))
         } else {
           files.push(buildFilename(stem, [codes[0]], fmt, { title: 'bilingual', flagFirst }))

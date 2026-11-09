@@ -57,6 +57,35 @@ class MediaCatalog:
     def list_groups(self, *, q: str = "", media_type: str = "", force: bool = False) -> List[Dict[str, Any]]:
         return group_media_items(self.list_media(q=q, media_type=media_type, force=force))
 
+    def list_stock_media(self) -> List[Dict[str, Any]]:
+        """Collect the full one-shot inventory from history and configured library roots."""
+        config = self.config_getter() or {}
+        index = SidecarIndex()
+        items = self._from_history(config, index)
+        roots = parse_multiline_paths(config.get("watch_paths"))
+        if self.library_roots:
+            try:
+                provided = self.library_roots() or []
+                roots.extend(parse_multiline_paths(provided) if isinstance(provided, str) else [str(item) for item in provided if item])
+            except Exception as exc:  # noqa: BLE001
+                studio_log(self.logger, "warning", "读取媒体库根目录失败：%s", exc)
+        if config.get("strm_enabled"):
+            roots.extend(parse_multiline_paths(config.get("strm_paths")))
+        items.extend(self._from_disk(config, index, roots=roots))
+        deduped = {}
+        for item in items:
+            media_path = str(item.get("path") or "")
+            try:
+                key = str(Path(media_path).resolve())
+            except OSError:
+                key = media_path
+            current = deduped.get(key)
+            if current is None or (current.get("origin") == "watch" and item.get("origin") != "watch"):
+                deduped[key] = item
+        rows = list(deduped.values())
+        studio_log(self.logger, "info", "存量扫描清单 整理记录=%s 合计文件=%s", len(items), len(rows))
+        return rows
+
     def _collect(self) -> List[Dict[str, Any]]:
         config = self.config_getter() or {}
         items: List[Dict[str, Any]] = []
@@ -102,17 +131,40 @@ class MediaCatalog:
             rows.append(self._item(path, entry.get("title") or Path(path).stem, entry, extra=entry, index=index))
         return rows
 
-    def _from_disk(self, config: Dict[str, Any], index: SidecarIndex) -> List[Dict[str, Any]]:
-        roots = parse_multiline_paths(config.get("watch_paths"))
+    def _from_disk(
+        self,
+        config: Dict[str, Any],
+        index: SidecarIndex,
+        *,
+        roots: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        roots = roots if roots is not None else parse_multiline_paths(config.get("watch_paths"))
         rows = []
+        normalized_roots = set()
         for root in roots:
-            base = Path(root)
-            if not base.is_dir():
+            try:
+                base = Path(root).resolve()
+            except OSError:
+                base = Path(root)
+            if base.is_dir():
+                normalized_roots.add(base)
+        seen_roots: List[Path] = []
+        for base in sorted(normalized_roots, key=lambda item: len(item.parts)):
+            if any(parent in base.parents for parent in seen_roots):
                 continue
-            for item in base.rglob("*"):
-                if not item.is_file() or not is_video_path(str(item)):
-                    continue
-                rows.append(self._item(str(item), item.stem, {}, {"origin": "watch", "library_name": "监控目录", "filename": item.name}, index=index))
+            seen_roots.append(base)
+            try:
+                files = base.rglob("*")
+                for item in files:
+                    if not item.is_file() or not is_video_path(str(item)):
+                        continue
+                    rows.append(self._item(
+                        str(item), item.stem, {},
+                        {"origin": "watch", "library_name": "媒体库目录", "filename": item.name},
+                        index=index,
+                    ))
+            except OSError as exc:
+                studio_log(self.logger, "warning", "枚举媒体目录失败：%s", exc)
         return rows
 
     def _from_strm(self, config: Dict[str, Any], index: SidecarIndex) -> List[Dict[str, Any]]:
