@@ -24,9 +24,19 @@ const pluginApi = computed(() => createStudioApi(props.api, pluginBase))
 
 const nav = ref('media')
 const loading = ref(false)
+const mediaLoading = ref(false)
 const dirty = ref(false)
 const mediaQuery = ref('')
 const mediaType = ref('')
+const mediaSort = ref('title_asc')
+const mediaSortItems = [
+  { title: '标题 A–Z', value: 'title_asc' },
+  { title: '标题 Z–A', value: 'title_desc' },
+  { title: '年份从新到旧', value: 'year_desc' },
+  { title: '年份从旧到新', value: 'year_asc' },
+  { title: '文件数从多到少', value: 'files_desc' },
+  { title: '文件数从少到多', value: 'files_asc' },
+]
 const mediaGroups = ref([])
 const failedPosterUrls = ref(new Set())
 const posterObjectUrls = ref({})
@@ -152,14 +162,42 @@ function fileHasSubtitle(file) {
   return !!(file?.sidecars?.length || file?.already_processed)
 }
 
-const visibleGroups = computed(() => (mediaGroups.value || []).map(group => {
-  const files = (group.files || []).filter(file => {
-    if (subtitleFilter.value === 'has') return fileHasSubtitle(file)
-    if (subtitleFilter.value === 'missing') return !fileHasSubtitle(file)
-    return true
+function mediaYear(group) {
+  const match = String(group?.year || '').match(/\d{4}/)
+  return match ? Number(match[0]) : 0
+}
+
+function compareMediaTitle(a, b) {
+  return String(a?.title || '').localeCompare(String(b?.title || ''), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+}
+
+const visibleGroups = computed(() => {
+  const groups = (mediaGroups.value || []).map(group => {
+    const files = (group.files || []).filter(file => {
+      if (subtitleFilter.value === 'has') return fileHasSubtitle(file)
+      if (subtitleFilter.value === 'missing') return !fileHasSubtitle(file)
+      return true
+    })
+    return files.length ? { ...group, files, file_count: files.length } : null
+  }).filter(Boolean)
+
+  return groups.sort((a, b) => {
+    const byTitle = compareMediaTitle(a, b)
+    if (mediaSort.value === 'title_desc') return -byTitle
+    if (mediaSort.value === 'year_asc' || mediaSort.value === 'year_desc') {
+      const yearA = mediaYear(a)
+      const yearB = mediaYear(b)
+      if (yearA !== yearB) {
+        if (!yearA) return 1
+        if (!yearB) return -1
+        return mediaSort.value === 'year_asc' ? yearA - yearB : yearB - yearA
+      }
+    }
+    if (mediaSort.value === 'files_desc' && a.file_count !== b.file_count) return b.file_count - a.file_count
+    if (mediaSort.value === 'files_asc' && a.file_count !== b.file_count) return a.file_count - b.file_count
+    return byTitle
   })
-  return files.length ? { ...group, files, file_count: files.length } : null
-}).filter(Boolean))
+})
 
 const selectedGroupFiles = computed(() => visibleGroups.value
   .filter(group => selectedGroupIds.value[group.id])
@@ -190,13 +228,21 @@ async function reload() {
 }
 
 async function loadMedia() {
+  mediaLoading.value = true
   try {
     const data = await pluginApi.value.media(mediaQuery.value, mediaType.value)
     mediaGroups.value = data?.groups || []
     mediaCounts.value = data?.counts || { files: 0, groups: 0 }
   } catch (error) {
     toast.error?.(error?.message || '加载媒体失败')
+  } finally {
+    mediaLoading.value = false
   }
+}
+
+async function clearMediaSearch() {
+  mediaQuery.value = ''
+  await loadMedia()
 }
 
 async function refreshLibrary() {
@@ -647,8 +693,8 @@ defineExpose({ reload, loadStatus: reload })
         </div>
         <template v-else>
           <div class="d-flex ga-2 mb-3">
-            <VTextField v-model="mediaQuery" label="搜索标题或文件名" prepend-inner-icon="mdi-magnify" hide-details class="flex-grow-1" @keyup.enter="loadMedia" />
-            <VBtn class="ss-touch" :loading="loading" @click="loadMedia">搜索</VBtn>
+            <VTextField v-model="mediaQuery" label="搜索标题、文件名或路径" prepend-inner-icon="mdi-magnify" clearable hide-details class="flex-grow-1" @keyup.enter="loadMedia" @click:clear="clearMediaSearch" />
+            <VBtn class="ss-touch" :loading="mediaLoading" @click="loadMedia">搜索</VBtn>
           </div>
           <div class="d-flex ga-2 mb-3" style="overflow-x:auto">
             <VChip :color="!mediaType ? 'primary' : undefined" @click="mediaType = ''; loadMedia()">全部</VChip>
@@ -697,9 +743,21 @@ defineExpose({ reload, loadStatus: reload })
             <VBtn size="small" variant="text" class="ss-touch" @click="toggleVisibleGroups(false)">清空</VBtn>
             <VBtn size="small" color="primary" class="ss-touch" :disabled="!selectedGroupFiles.length" @click="submitGroups">提交所选（{{ selectedGroupFiles.length }}）</VBtn>
           </div>
-          <div class="text-medium-emphasis mb-3">整理记录 {{ visibleGroups.length }} 部 · {{ visibleGroups.reduce((sum, group) => sum + (group.file_count || 0), 0) }} 个文件</div>
+          <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-3">
+            <div class="text-medium-emphasis">整理记录 {{ visibleGroups.length }} 部 · {{ visibleGroups.reduce((sum, group) => sum + (group.file_count || 0), 0) }} 个文件</div>
+            <VSelect
+              v-model="mediaSort"
+              :items="mediaSortItems"
+              item-title="title"
+              item-value="value"
+              label="排序"
+              density="compact"
+              hide-details
+              style="min-width: 180px; max-width: 230px"
+            />
+          </div>
           <VAlert v-if="!visibleGroups.length" type="info" variant="tonal" class="mb-3">
-            {{ subtitleFilter ? '这个筛选下没有影片。' : '没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。' }}
+            {{ mediaQuery ? '没有匹配的媒体，请检查标题、文件名或路径。' : subtitleFilter ? '这个筛选下没有影片。' : '没有本地媒体。点「拉取媒体库」读取 MoviePilot 整理记录；先在 MoviePilot 里整理入库后才会出现。这里不是 Emby/Jellyfin 在线目录。' }}
           </VAlert>
           <VList>
             <VListItem

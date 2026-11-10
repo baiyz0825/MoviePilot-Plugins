@@ -27,12 +27,27 @@ _ALIASES = {
     "pt": "pt", "por": "pt", "portuguese": "pt",
     "ru": "ru", "rus": "ru", "russian": "ru",
     "ar": "ar", "ara": "ar", "arabic": "ar",
+    "hi": "hi", "hin": "hi", "hindi": "hi",
+    "bn": "bn", "ben": "bn", "bengali": "bn",
+    "ur": "ur", "urd": "ur", "urdu": "ur",
+    "id": "id", "ind": "id", "indonesian": "id",
+    "pcm": "pcm", "nigerian-pidgin": "pcm",
+    "mr": "mr", "mar": "mr", "marathi": "mr",
+    "te": "te", "tel": "te", "telugu": "te",
+    "tr": "tr", "tur": "tr", "turkish": "tr",
+    "ta": "ta", "tam": "ta", "tamil": "ta",
+    "vi": "vi", "vie": "vi", "vietnamese": "vi",
+    "tl": "tl", "tgl": "tl", "fil": "tl", "tagalog": "tl", "filipino": "tl",
+    "fa": "fa", "fas": "fa", "per": "fa", "persian": "fa",
+    "jv": "jv", "jav": "jv", "javanese": "jv",
+    "ha": "ha", "hau": "ha", "hausa": "ha",
+    "sw": "sw", "swa": "sw", "swahili": "sw",
 }
 _UNKNOWN = {
     "", "source", "src", "original", "orig", "unknown", "und", "unk", "auto", "none", "null",
     "mul", "multi", "multilingual", "bilingual", "dual", "双语", "多语",
 }
-_LATIN_LANGS = {"en", "fr", "de", "es", "it", "pt"}
+_LATIN_LANGS = {"en", "fr", "de", "es", "it", "pt", "id", "pcm", "tr", "vi", "tl", "ha", "sw", "jv"}
 
 _HAN = re.compile(r"[㐀-䶿一-鿿]")
 _KANA = re.compile(r"[぀-ヿ]")

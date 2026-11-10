@@ -2,7 +2,7 @@
 
 用 ffprobe 扫描字幕流，ffmpeg 提取文本字幕（SRT/ASS/SSA）。
 图形字幕（PGS/VobSub）不提取。STRM 不提取。
-按 source_preference 选最佳非目标语言轨，作为翻译源。
+优先复用目标语言轨；没有时按 source_preference 选择翻译源。
 """
 
 from __future__ import annotations
@@ -22,6 +22,44 @@ from .models import CueGraph
 
 # 图形字幕，提取了也不能当文本用
 SKIP_CODECS = {"pgssub", "dvd_subtitle", "vobsub", "hdmv_pgs_subtitle", "pgs"}
+
+# Total-speaker ranks from Ethnologue 2025; unranked tracks follow in original order.
+_SPEAKER_RANK = {
+    "en": 1,
+    "zh-Hans": 2, "zh-Hant": 2,
+    "hi": 3,
+    "es": 4,
+    "ar": 5,
+    "fr": 6,
+    "bn": 7,
+    "pt": 8,
+    "ru": 9,
+    "ur": 10,
+    "id": 11,
+    "de": 12,
+    "ja": 13,
+    "pcm": 14,
+    "mr": 16,
+    "vi": 17,
+    "te": 18,
+    "ha": 19,
+    "tr": 20,
+    "sw": 22,
+    "tl": 23,
+    "ta": 24,
+    "fa": 27,
+    "ko": 28,
+    "jv": 30,
+    "it": 31,
+}
+
+
+def _speaker_rank(language: str) -> Optional[int]:
+    return _SPEAKER_RANK.get(canonical_language(language))
+
+
+class _EmbeddedExtractionTimeout(Exception):
+    """Signal that retrying another track would rescan the same slow media file."""
 
 
 def probe_video_resolution(path: str, logger: Any = None) -> tuple:
@@ -135,8 +173,12 @@ def extract_stream(
     media_duration: float = 0.0,
 ) -> Optional[str]:
     """ffmpeg 提取字幕流，定期记录容器扫描进度及最终耗时。"""
-    timeout_seconds = 120
+    no_progress_timeout_seconds = 300
     progress_interval = 30
+    if media_duration > 0:
+        timeout_seconds = int(max(300, min(1800, media_duration / 5)))
+    else:
+        timeout_seconds = 600
     label = context or f"stream={stream_index}"
     read_fd, write_fd = os.pipe()
     command = [
@@ -149,6 +191,7 @@ def extract_stream(
     command.extend(["-f", "srt", "-"])
     progress: Dict[str, str] = {}
     progress_lock = threading.Lock()
+    progress_activity = {"last_change": time.monotonic()}
 
     def _read_progress() -> None:
         try:
@@ -157,6 +200,8 @@ def extract_stream(
                     key, separator, value = line.strip().partition("=")
                     if separator:
                         with progress_lock:
+                            if key in {"out_time", "out_time_ms", "total_size"} and progress.get(key) != value:
+                                progress_activity["last_change"] = time.monotonic()
                             progress[key] = value
         except OSError:
             pass
@@ -201,45 +246,63 @@ def extract_stream(
         studio_log(logger, "warning", "启动 ffmpeg 提取内嵌字幕失败 %s：%s", label, exc)
         return None
     os.close(write_fd)
+    started = time.monotonic()
+    progress_activity["last_change"] = started
     progress_reader = threading.Thread(target=_read_progress, name="subtitle-ffmpeg-progress", daemon=True)
     progress_reader.start()
-    started = time.monotonic()
     last_progress_log = 0.0
     stdout = ""
     stderr = ""
     timed_out = False
+    timeout_reason = ""
     studio_log(
-        logger, "info", "ffmpeg 开始提取内嵌字幕 %s media_duration=%.1fs timeout=%ss copy_subrip=%s",
-        label, media_duration, timeout_seconds, codec.lower() in {"subrip", "srt"},
+        logger, "info",
+        "ffmpeg 开始提取内嵌字幕 %s media_duration=%.1fs max_duration=%ss no_progress_timeout=%ss copy_subrip=%s",
+        label, media_duration, timeout_seconds, no_progress_timeout_seconds,
+        codec.lower() in {"subrip", "srt"},
     )
     try:
         while True:
-            remaining = timeout_seconds - (time.monotonic() - started)
+            elapsed = time.monotonic() - started
+            remaining = timeout_seconds - elapsed
             if remaining <= 0:
                 timed_out = True
+                timeout_reason = "max_duration"
                 break
             try:
                 stdout, stderr = process.communicate(timeout=min(progress_interval, remaining))
                 break
             except subprocess.TimeoutExpired:
-                elapsed = time.monotonic() - started
+                now = time.monotonic()
+                elapsed = now - started
+                with progress_lock:
+                    idle_elapsed = now - progress_activity["last_change"]
+                if idle_elapsed >= no_progress_timeout_seconds:
+                    timed_out = True
+                    timeout_reason = "no_progress"
+                    break
                 if elapsed >= timeout_seconds:
                     timed_out = True
+                    timeout_reason = "max_duration"
                     break
                 if elapsed - last_progress_log >= progress_interval - 1:
                     studio_log(
-                        logger, "info", "ffmpeg 仍在提取内嵌字幕 %s elapsed=%.1fs progress={%s}",
-                        label, elapsed, _progress_snapshot(),
+                        logger, "info",
+                        "ffmpeg 仍在提取内嵌字幕 %s elapsed=%.1fs idle=%.1fs progress={%s}",
+                        label, elapsed, idle_elapsed, _progress_snapshot(),
                     )
                     last_progress_log = elapsed
         if timed_out:
             if process.poll() is not None:
                 timed_out = False
+                timeout_reason = ""
             else:
                 try:
                     process.kill()
                 except ProcessLookupError:
                     timed_out = process.poll() is None
+                    if not timed_out:
+                        timeout_reason = ""
             stdout, stderr = process.communicate()
     except Exception as exc:  # noqa: BLE001
         if process.poll() is None:
@@ -265,10 +328,12 @@ def extract_stream(
     snapshot = _progress_snapshot()
     if timed_out:
         studio_log(
-            logger, "warning", "ffmpeg 提取内嵌字幕超时 %s elapsed=%.1fs timeout=%ss progress={%s} stderr=%s",
-            label, elapsed, timeout_seconds, snapshot, detail or "无错误输出",
+            logger, "warning",
+            "ffmpeg 提取内嵌字幕超时 %s reason=%s elapsed=%.1fs max_duration=%ss no_progress_timeout=%ss progress={%s} stderr=%s",
+            label, timeout_reason, elapsed, timeout_seconds, no_progress_timeout_seconds,
+            snapshot, detail or "无错误输出",
         )
-        return None
+        raise _EmbeddedExtractionTimeout(timeout_reason)
     if process.returncode != 0:
         studio_log(
             logger, "warning", "ffmpeg 提取内嵌字幕失败 %s returncode=%s elapsed=%.1fs progress={%s} stderr=%s",
@@ -288,18 +353,10 @@ def extract_stream(
     return stdout
 
 
-def _is_target_lang(language: str, target_prefixes: set) -> bool:
-    lang = canonical_language(language)
-    if not language:
-        return False
-    return lang in target_prefixes
-
-
 def extract_best_embedded(job: Any, config: Dict[str, Any], logger: Any = None) -> Optional[CueGraph]:
-    """按 source_preference 选最佳内嵌文本字幕轨，提取并解析成 CueGraph。
+    """优先复用目标语言内嵌轨，否则按 source_preference 选翻译源轨。
 
-    优先级：先过滤掉目标语言字幕（已经是中文的不用提取翻译），
-    再按 english_first / english_only / original_first 选轨。
+    默认回退顺序按总使用人数排列；english_only 和 original_first 可覆盖回退顺序。
     """
     path = str(getattr(job, "path", "") or "")
     if not path or getattr(job, "is_strm", False):
@@ -310,36 +367,47 @@ def extract_best_embedded(job: Any, config: Dict[str, Any], logger: Any = None) 
     if not streams:
         return None
     target_langs = [str(item) for item in (config.get("target_languages") or ["zh-Hans"])]
-    target_prefixes = {canonical_language(lang) for lang in target_langs}
-    candidates = [s for s in streams if not _is_target_lang(s["language"], target_prefixes)]
-    if not candidates:
-        # A selected target can also be the source track (e.g. English source with
-        # Chinese+English outputs). Reuse it, then translate only missing targets.
-        candidates = streams
-        studio_log(logger, "info", "内嵌字幕均属于目标语种，仍提取优先源轨复用原文 path=%s", path)
+    target_order = {canonical_language(lang): index for index, lang in enumerate(target_langs)}
+    target_candidates = [s for s in streams if canonical_language(s["language"]) in target_order]
+    target_candidates.sort(key=lambda stream: (target_order[canonical_language(stream["language"])], stream["index"]))
+    target_indexes = {stream["index"] for stream in target_candidates}
+    fallback_candidates = [stream for stream in streams if stream["index"] not in target_indexes]
     pref = str(config.get("source_preference") or "english_first")
-    english = [s for s in candidates if canonical_language(s["language"]) == "en"]
     if pref == "english_only":
-        candidates = english
+        fallback_candidates = [s for s in fallback_candidates if canonical_language(s["language"]) == "en"]
     elif pref == "english_first":
-        candidates = english + [s for s in candidates if canonical_language(s["language"]) != "en"]
-    # original_first keeps ffprobe's original track order.
+        fallback_candidates.sort(key=lambda stream: (_speaker_rank(stream["language"]) or 999, stream["index"]))
+    # original_first keeps ffprobe order for fallback tracks.
+    candidates = target_candidates + fallback_candidates
+    if target_candidates:
+        studio_log(
+            logger, "info", "发现已存在的目标语言内嵌轨，优先复用 langs=%s path=%s",
+            [stream["language"] for stream in target_candidates], path,
+        )
     if not candidates:
         studio_log(logger, "info", "没有符合条件的内嵌字幕轨 pref=%s path=%s", pref, path)
         return None
     job_id = str(getattr(job, "job_id", "") or "")
     media_duration = float(streams[0].get("media_duration") or 0)
     candidate_rank = {stream["index"]: rank for rank, stream in enumerate(candidates, 1)}
+    target_rank = {stream["index"]: rank for rank, stream in enumerate(target_candidates, 1)}
+    fallback_rank = {stream["index"]: rank for rank, stream in enumerate(fallback_candidates, 1)}
     track_summary = []
     for stream in streams:
         rank = candidate_rank.get(stream["index"])
         title = str(stream["title"] or "").replace("\r", " ").replace("\n", " ")[:100]
-        if rank:
-            selection = f"candidate_order={rank}"
+        if stream["index"] in target_rank:
+            selection = f"target_language_order={target_rank[stream['index']]} candidate_order={rank}"
         elif pref == "english_only" and canonical_language(stream["language"]) != "en":
             selection = "excluded_by_english_only"
+        elif pref == "original_first" and stream["index"] in fallback_rank:
+            selection = f"original_order={fallback_rank[stream['index']]} candidate_order={rank}"
+        elif stream["index"] in fallback_rank:
+            language_rank = _speaker_rank(stream["language"])
+            rank_label = f"speaker_rank={language_rank}" if language_rank is not None else "speaker_rank=unranked"
+            selection = f"{rank_label} candidate_order={rank}"
         else:
-            selection = "filtered_target_language"
+            selection = "not_selected"
         track_summary.append(
             f"#{stream['index']}:{stream['codec']}:{stream['language'] or 'unknown'} "
             f"title={title!r} default={stream['default']} forced={stream['forced']} "
@@ -364,10 +432,18 @@ def extract_best_embedded(job: Any, config: Dict[str, Any], logger: Any = None) 
             f"job={job_id} media={Path(path).name} stream={picked['index']} codec={picked['codec']} "
             f"lang={picked['language'] or 'unknown'} title={picked['title'] or 'untitled'}"
         )
-        content = extract_stream(
-            path, picked["index"], logger, codec=picked["codec"], context=context,
-            media_duration=media_duration,
-        )
+        try:
+            content = extract_stream(
+                path, picked["index"], logger, codec=picked["codec"], context=context,
+                media_duration=media_duration,
+            )
+        except _EmbeddedExtractionTimeout as exc:
+            studio_log(
+                logger, "warning",
+                "内嵌字幕提取因超时停止 job=%s stream=%s reason=%s，不再重扫同一媒体的其他字幕轨",
+                job_id, picked["index"], str(exc),
+            )
+            return None
         if not content:
             continue
         try:
