@@ -68,7 +68,7 @@ const PRESETS = [
   { value: 'plex', title: 'Plex', hint: 'chi / eng · 不标 default' },
   { value: 'fnos', title: '飞牛影视', hint: 'zh / en · 同主体名，不标 default' },
   { value: 'web', title: 'Infuse / 网页', hint: 'zh-CN · 再勾 VTT' },
-  { value: 'legacy', title: '兼容旧库', hint: 'chi / chi&eng' },
+  { value: 'legacy', title: '兼容旧库', hint: 'chi / 叠行标主语种' },
 ];
 
 const LANG_CODES = {
@@ -245,7 +245,7 @@ function exportPreview(config, stem = 'Movie') {
         if (preset === 'fnos') {
           files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }));
         } else if (preset === 'legacy') {
-          files.push(buildFilename(stem, [codes.join('&')], fmt, { flagFirst }));
+          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }));
         } else {
           files.push(buildFilename(stem, [codes[0]], fmt, { title: 'bilingual', flagFirst }));
         }

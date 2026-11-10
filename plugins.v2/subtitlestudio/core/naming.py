@@ -126,7 +126,7 @@ PRESETS = {
     },
     "legacy": {
         "label": "兼容旧库",
-        "hint": "chi / chi&eng",
+        "hint": "chi / 叠行标主语种",
         "mark_default": False,
         "formats": ["srt"],
         "flag_first": False,
@@ -201,7 +201,8 @@ def _default_flags(mark_default: bool, lang_id: str) -> List[str]:
 
 def _stacked_filename(stem: str, codes: Sequence[str], fmt: str, *, preset: str, flag_first: bool) -> str:
     if preset == "legacy":
-        return build_filename(stem, ["&".join(codes)], fmt, flag_first=flag_first)
+        primary = codes[0] if codes else "chi"
+        return build_filename(stem, [primary], fmt, flag_first=flag_first)
     if preset == "fnos":
         # SRT 本身没有语言元数据；飞牛示例按同名文件加单一语言后缀。
         # 叠行内容按第一目标语言标记，避免组合语言码被播放器显示为未知语言。
