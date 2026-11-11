@@ -55,6 +55,160 @@ function useMobileViewport(query = MOBILE_QUERY) {
   return isMobileViewport
 }
 
+const profiles = [
+	{
+		id: "plex",
+		title: "Plex",
+		group: "媒体服务器",
+		hint: "使用 chi / eng 语言码；不写 default。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "chi",
+			"zh-Hant": "cht",
+			en: "eng",
+			ja: "jpn",
+			ko: "kor"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: false,
+		mark_default: false
+	},
+	{
+		id: "emby",
+		title: "Emby",
+		group: "媒体服务器",
+		hint: "使用 zh-CN / zh-TW、eng 等语言码；支持 default、forced、SDH 标记。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "zh-CN",
+			"zh-Hant": "zh-TW",
+			en: "eng",
+			ja: "jpn",
+			ko: "kor"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: true,
+		mark_default: true,
+		default_language: "primary"
+	},
+	{
+		id: "jellyfin",
+		title: "Jellyfin",
+		group: "媒体服务器",
+		hint: "使用 zh-Hans / zh-Hant、en 等语言码；支持 default、forced、SDH 标记。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "zh-Hans",
+			"zh-Hant": "zh-Hant",
+			en: "en",
+			ja: "ja",
+			ko: "ko"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: true,
+		mark_default: true,
+		default_language: "primary"
+	},
+	{
+		id: "fnos",
+		title: "飞牛影视",
+		group: "媒体服务器",
+		hint: "使用 zh / en 等短语言码；实际识别效果请以文件名预览和飞牛版本为准。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "zh",
+			"zh-Hant": "zh-TW",
+			en: "en",
+			ja: "ja",
+			ko: "ko"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: false,
+		mark_default: false
+	},
+	{
+		id: "infuse_local",
+		title: "Infuse · 文件夹 / SMB",
+		group: "客户端直读",
+		hint: "视频同目录、同主体名，语言码用连字符，例如 Movie-en.srt。经媒体服务器播放时请选择服务器预设。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "zh-CN",
+			"zh-Hant": "zh-TW",
+			en: "en",
+			ja: "ja",
+			ko: "ko"
+		},
+		stem_separator: "-",
+		flag_first: false,
+		supports_default: false,
+		mark_default: false
+	},
+	{
+		id: "library_zh",
+		title: "MoviePilot 整理格式",
+		group: "MoviePilot / 兼容",
+		hint: "使用 default.chi.zh-cn 命名，兼容 MoviePilot 整理记录。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "chi.zh-cn",
+			"zh-Hant": "zh-tw",
+			en: "eng",
+			ja: "ja",
+			ko: "ko"
+		},
+		stem_separator: ".",
+		flag_first: true,
+		supports_default: true,
+		mark_default: true,
+		default_language: "zh"
+	},
+	{
+		id: "legacy",
+		title: "旧库兼容 · ISO 码",
+		group: "MoviePilot / 兼容",
+		hint: "沿用 chi / eng 等单一语言码；叠行文件标主语种。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "chi",
+			"zh-Hant": "cht",
+			en: "eng",
+			ja: "jpn",
+			ko: "kor"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: false,
+		mark_default: false
+	},
+	{
+		id: "web",
+		title: "旧版网页预设 · 兼容",
+		group: "MoviePilot / 兼容",
+		hint: "保留已有 web 配置的 zh-CN 等点分命名；新配置可选 Infuse · 文件夹 / SMB。",
+		visible: true,
+		language_codes: {
+			"zh-Hans": "zh-CN",
+			"zh-Hant": "zh-TW",
+			en: "en",
+			ja: "ja",
+			ko: "ko"
+		},
+		stem_separator: ".",
+		flag_first: false,
+		supports_default: true,
+		mark_default: true,
+		default_language: "zh"
+	}
+];
+const namingPresetData = {
+	profiles: profiles
+};
+
 const LANGS = [
   { title: '简中', value: 'zh-Hans' },
   { title: '繁中', value: 'zh-Hant' },
@@ -63,21 +217,21 @@ const LANGS = [
   { title: '韩文', value: 'ko' },
 ];
 
-const PRESETS = [
-  { value: 'library_zh', title: '媒体库 / MoviePilot', hint: 'default.chi.zh-cn · 对齐整理记录' },
-  { value: 'plex', title: 'Plex', hint: 'chi / eng · 不标 default' },
-  { value: 'fnos', title: '飞牛影视', hint: 'zh / en · 同主体名，不标 default' },
-  { value: 'web', title: 'Infuse / 网页', hint: 'zh-CN · 再勾 VTT' },
-  { value: 'legacy', title: '兼容旧库', hint: 'chi / 叠行标主语种' },
-];
+const PRESET_BY_ID = Object.fromEntries(
+  namingPresetData.profiles.map(profile => [profile.id, profile]),
+);
 
-const LANG_CODES = {
-  'zh-Hans': { library_zh: 'chi.zh-cn', plex: 'chi', web: 'zh-CN', fnos: 'zh', legacy: 'chi' },
-  'zh-Hant': { library_zh: 'zh-tw', plex: 'cht', web: 'zh-TW', fnos: 'zh-TW', legacy: 'cht' },
-  en: { library_zh: 'eng', plex: 'eng', web: 'en', fnos: 'en', legacy: 'eng' },
-  ja: { library_zh: 'ja', plex: 'jpn', web: 'ja', fnos: 'ja', legacy: 'jpn' },
-  ko: { library_zh: 'ko', plex: 'kor', web: 'ko', fnos: 'ko', legacy: 'kor' },
-};
+const PRESETS = namingPresetData.profiles
+  .filter(profile => profile.visible !== false)
+  .map(profile => ({ value: profile.id, title: profile.title, hint: profile.hint, group: profile.group }));
+
+const presetGroups = new Map();
+for (const preset of PRESETS) {
+  const items = presetGroups.get(preset.group) || [];
+  items.push(preset);
+  presetGroups.set(preset.group, items);
+}
+const PRESET_GROUPS = Array.from(presetGroups, ([title, items]) => ({ title, items }));
 
 const PANES = [
   ['basic', '基础'],
@@ -195,72 +349,84 @@ function overlayCss(style, rank = 0, kind = 'dialogue', scale = 1) {
   }
 }
 
-function langCode(lang, preset) {
-  return LANG_CODES[lang]?.[preset] || LANG_CODES[lang]?.fnos || lang
+function presetSpec(preset) {
+  return PRESET_BY_ID[preset] || PRESET_BY_ID.fnos
 }
 
-function buildFilename(stem, langs, ext, { title = '', flags = [], flagFirst = false } = {}) {
-  const parts = [stem];
+function langCode(lang, preset) {
+  const profile = presetSpec(preset);
+  return profile.language_codes?.[lang] || profile.language_codes?.['zh-Hans'] || lang
+}
+
+function buildFilename(stem, langs, ext, { title = '', flags = [], flagFirst = false, stemSeparator = '.' } = {}) {
   const langPart = langs.filter(Boolean).join('.');
-  const flagParts = flags.filter(Boolean);
+  const suffix = [];
   if (flagFirst) {
-    parts.push(...flagParts);
-    if (langPart) parts.push(langPart);
-    if (title) parts.push(title);
+    suffix.push(...flags.filter(Boolean));
+    if (langPart) suffix.push(langPart);
+    if (title) suffix.push(title);
   } else {
-    if (langPart) parts.push(langPart);
-    if (title) parts.push(title);
-    parts.push(...flagParts);
+    if (langPart) suffix.push(langPart);
+    if (title) suffix.push(title);
+    suffix.push(...flags.filter(Boolean));
   }
-  return `${parts.join('.')}.${ext}`
+  const prefix = suffix.length ? `${stem}${stemSeparator}${suffix.join('.')}` : stem;
+  return `${prefix}.${ext}`
+}
+
+function supportsDefault(preset) {
+  return Boolean(presetSpec(preset).supports_default)
+}
+
+function defaultFlags(profile, enabled, lang) {
+  if (!enabled || !profile.supports_default) return []
+  if (profile.default_language === 'zh' && !lang?.startsWith('zh')) return []
+  return ['default']
 }
 
 function applyPreset(config, preset) {
-  const next = { ...config, export_preset: preset };
-  if (preset === 'plex' || preset === 'fnos') next.mark_default = false;
-  if (preset === 'library_zh' || preset === 'web') next.mark_default = true;
-  const formats = new Set(next.export_formats || ['srt']);
-  formats.add('srt');
-  if (preset === 'web') formats.add('vtt');
-  next.export_formats = Array.from(formats);
-  return next
+  const profile = presetSpec(preset);
+  return {
+    ...config,
+    export_preset: profile.id,
+    mark_default: Boolean(profile.supports_default && profile.mark_default),
+  }
 }
 
 function exportPreview(config, stem = 'Movie') {
   const preset = config.export_preset || 'fnos';
+  const profile = presetSpec(preset);
   const langs = (config.target_languages || ['zh-Hans']).slice(0, 3);
   const layouts = config.export_layouts || ['mono'];
-  const formats = config.export_formats || ['srt'];
-  const markDefault = Boolean(config.mark_default) && preset !== 'plex' && preset !== 'fnos';
-  const flagFirst = preset === 'library_zh';
+  const formats = [...(config.export_formats || ['srt'])];
+  if (layouts.includes('stacked') && langs.length > 1 && !formats.includes('ass')) formats.push('ass');
+  const markDefault = Boolean(config.mark_default) && Boolean(profile.supports_default);
+  const filenameOptions = {
+    flagFirst: Boolean(profile.flag_first),
+    stemSeparator: profile.stem_separator || '.',
+  };
   const files = [];
   for (const layout of layouts) {
     for (const fmt of formats) {
       if (layout === 'mono') {
-        const flags = markDefault && langs[0]?.startsWith('zh') ? ['default'] : [];
-        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, { flags, flagFirst }));
+        const flags = defaultFlags(profile, markDefault, langs[0]);
+        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, { ...filenameOptions, flags }));
       }
       if (layout === 'stacked' && langs.length > 1) {
-        const codes = langs.map(item => langCode(item, preset));
-        if (preset === 'fnos') {
-          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }));
-        } else if (preset === 'legacy') {
-          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }));
-        } else {
-          files.push(buildFilename(stem, [codes[0]], fmt, { title: 'bilingual', flagFirst }));
-        }
+        // A stacked file is one track. Its filename identifies the primary language only.
+        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, filenameOptions));
       }
       if (layout === 'split') {
         langs.forEach((lang, index) => {
-          const flags = markDefault && index === 0 && lang.startsWith('zh') ? ['default'] : [];
-          files.push(buildFilename(stem, [langCode(lang, preset)], fmt, { flags, flagFirst }));
+          const flags = defaultFlags(profile, markDefault && index === 0, lang);
+          files.push(buildFilename(stem, [langCode(lang, preset)], fmt, { ...filenameOptions, flags }));
         });
       }
     }
   }
-  if (config.effects_enabled) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'ass', { title: 'notes', flagFirst }));
-  if (config.enable_sdh) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'srt', { title: 'sdh', flagFirst }));
-  if (config.save_asr_track) files.push(buildFilename(stem, [langCode('en', preset)], 'srt', { title: 'asr', flagFirst }));
+  if (config.effects_enabled) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'ass', { ...filenameOptions, title: 'notes' }));
+  if (config.enable_sdh) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'srt', { ...filenameOptions, title: 'sdh' }));
+  if (config.save_asr_track) files.push(buildFilename(stem, [langCode('en', preset)], 'srt', { ...filenameOptions, title: 'asr' }));
   return files
 }
 
@@ -275,45 +441,57 @@ const _hoisted_5 = { key: 7 };
 const _hoisted_6 = { class: "text-body-2 mb-2" };
 const _hoisted_7 = { key: 9 };
 const _hoisted_8 = { class: "text-body-2 mb-2" };
-const _hoisted_9 = { key: 10 };
-const _hoisted_10 = { class: "text-body-2 mb-2" };
-const _hoisted_11 = { key: 11 };
-const _hoisted_12 = { class: "d-flex align-center mb-2" };
-const _hoisted_13 = { class: "text-body-2" };
-const _hoisted_14 = { class: "d-flex ga-2 mt-2" };
-const _hoisted_15 = { class: "ss-help" };
-const _hoisted_16 = {
+const _hoisted_9 = { class: "text-caption text-medium-emphasis mb-2" };
+const _hoisted_10 = { class: "d-flex flex-wrap ga-1 mt-1" };
+const _hoisted_11 = {
+  key: 0,
+  class: "text-caption text-medium-emphasis mt-2"
+};
+const _hoisted_12 = { key: 10 };
+const _hoisted_13 = { class: "text-body-2 mb-2" };
+const _hoisted_14 = { key: 11 };
+const _hoisted_15 = { class: "d-flex align-center mb-2" };
+const _hoisted_16 = { class: "text-body-2" };
+const _hoisted_17 = { class: "d-flex ga-2 mt-2" };
+const _hoisted_18 = { class: "ss-help" };
+const _hoisted_19 = {
   key: 2,
   class: "mt-4"
 };
-const _hoisted_17 = { key: 6 };
-const _hoisted_18 = { class: "text-body-2 mb-2" };
-const _hoisted_19 = { key: 7 };
-const _hoisted_20 = { class: "text-body-2 mb-2" };
-const _hoisted_21 = { key: 9 };
-const _hoisted_22 = { class: "text-body-2 mb-2" };
-const _hoisted_23 = { key: 10 };
-const _hoisted_24 = { class: "text-body-2 mb-2" };
-const _hoisted_25 = { key: 11 };
-const _hoisted_26 = { class: "d-flex align-center mb-2" };
-const _hoisted_27 = { class: "text-body-2" };
-const _hoisted_28 = { class: "d-flex flex-wrap ga-2" };
-const _hoisted_29 = { class: "d-flex ga-2 mt-2" };
-const _hoisted_30 = {
+const _hoisted_20 = { key: 6 };
+const _hoisted_21 = { class: "text-body-2 mb-2" };
+const _hoisted_22 = { key: 7 };
+const _hoisted_23 = { class: "text-body-2 mb-2" };
+const _hoisted_24 = { key: 9 };
+const _hoisted_25 = { class: "text-body-2 mb-2" };
+const _hoisted_26 = { class: "text-caption text-medium-emphasis mb-2" };
+const _hoisted_27 = { class: "d-flex flex-wrap ga-1 mt-1" };
+const _hoisted_28 = {
+  key: 0,
+  class: "text-caption text-medium-emphasis mt-2"
+};
+const _hoisted_29 = { key: 10 };
+const _hoisted_30 = { class: "text-body-2 mb-2" };
+const _hoisted_31 = { key: 11 };
+const _hoisted_32 = { class: "d-flex align-center mb-2" };
+const _hoisted_33 = { class: "text-body-2" };
+const _hoisted_34 = { class: "d-flex flex-wrap ga-2" };
+const _hoisted_35 = { class: "d-flex ga-2 mt-2" };
+const _hoisted_36 = {
   key: 12,
   class: "ss-style-editor"
 };
-const _hoisted_31 = { class: "text-body-2 mb-2" };
-const _hoisted_32 = { class: "d-flex flex-wrap ga-2 mb-3" };
-const _hoisted_33 = { class: "text-caption text-medium-emphasis mb-4" };
-const _hoisted_34 = { class: "ss-color-field" };
-const _hoisted_35 = ["value"];
-const _hoisted_36 = { class: "ss-color-field" };
-const _hoisted_37 = ["value"];
-const _hoisted_38 = { class: "ss-color-field" };
-const _hoisted_39 = ["value"];
-const _hoisted_40 = { class: "d-flex flex-wrap ga-2" };
-const _hoisted_41 = { class: "ss-help" };
+const _hoisted_37 = { class: "text-body-2 mb-2" };
+const _hoisted_38 = { class: "d-flex flex-wrap ga-2 mb-3" };
+const _hoisted_39 = { class: "text-caption text-medium-emphasis mb-4" };
+const _hoisted_40 = { class: "ss-color-field" };
+const _hoisted_41 = ["value"];
+const _hoisted_42 = { class: "ss-color-field" };
+const _hoisted_43 = ["value"];
+const _hoisted_44 = { class: "ss-color-field" };
+const _hoisted_45 = ["value"];
+const _hoisted_46 = { class: "d-flex flex-wrap ga-2" };
+const _hoisted_47 = { class: "ss-help" };
 
 const {computed,onBeforeUnmount,ref,watch} = await importShared('vue');
 
@@ -699,9 +877,12 @@ return (_ctx, _cache) => {
                                 "model-value": config.value[field.key],
                                 label: field.label,
                                 color: "primary",
-                                "hide-details": "",
+                                disabled: field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset),
+                                hint: field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset) ? '当前命名方案不支持 default 标记。' : undefined,
+                                "persistent-hint": field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset),
+                                "hide-details": field.key !== 'mark_default' || _unref(supportsDefault)(config.value.export_preset),
                                 "onUpdate:modelValue": $event => (setField(field.key, $event))
-                              }, null, 8, ["model-value", "label", "onUpdate:modelValue"]))
+                              }, null, 8, ["model-value", "label", "disabled", "hint", "persistent-hint", "hide-details", "onUpdate:modelValue"]))
                             : (field.control === 'textarea')
                               ? (_openBlock(), _createBlock(_component_VTextarea, {
                                   key: 1,
@@ -820,35 +1001,61 @@ return (_ctx, _cache) => {
                                             : (field.control === 'preset')
                                               ? (_openBlock(), _createElementBlock("div", _hoisted_7, [
                                                   _createElementVNode("div", _hoisted_8, _toDisplayString(field.label), 1),
-                                                  (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESETS), (preset) => {
-                                                    return (_openBlock(), _createBlock(_component_VCard, {
-                                                      key: preset.value,
-                                                      class: "ss-card mb-2",
-                                                      color: config.value.export_preset === preset.value ? 'primary' : undefined,
-                                                      variant: "tonal",
-                                                      onClick: $event => (usePreset(preset.value))
-                                                    }, {
-                                                      default: _withCtx(() => [
-                                                        _createVNode(_component_VCardTitle, { class: "text-subtitle-1" }, {
+                                                  (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESET_GROUPS), (group) => {
+                                                    return (_openBlock(), _createElementBlock("div", {
+                                                      key: group.title,
+                                                      class: "mb-4"
+                                                    }, [
+                                                      _createElementVNode("div", _hoisted_9, _toDisplayString(group.title), 1),
+                                                      (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(group.items, (preset) => {
+                                                        return (_openBlock(), _createBlock(_component_VCard, {
+                                                          key: preset.value,
+                                                          class: "ss-card mb-2",
+                                                          color: config.value.export_preset === preset.value ? 'primary' : undefined,
+                                                          variant: "tonal",
+                                                          onClick: $event => (usePreset(preset.value))
+                                                        }, {
                                                           default: _withCtx(() => [
-                                                            _createTextVNode(_toDisplayString(preset.title), 1)
+                                                            _createVNode(_component_VCardTitle, { class: "text-subtitle-1" }, {
+                                                              default: _withCtx(() => [
+                                                                _createTextVNode(_toDisplayString(preset.title), 1)
+                                                              ]),
+                                                              _: 2
+                                                            }, 1024),
+                                                            _createVNode(_component_VCardText, null, {
+                                                              default: _withCtx(() => [
+                                                                _createTextVNode(_toDisplayString(preset.hint), 1)
+                                                              ]),
+                                                              _: 2
+                                                            }, 1024)
                                                           ]),
                                                           _: 2
-                                                        }, 1024),
-                                                        _createVNode(_component_VCardText, null, {
-                                                          default: _withCtx(() => [
-                                                            _createTextVNode(_toDisplayString(preset.hint), 1)
-                                                          ]),
-                                                          _: 2
-                                                        }, 1024)
-                                                      ]),
-                                                      _: 2
-                                                    }, 1032, ["color", "onClick"]))
-                                                  }), 128))
+                                                        }, 1032, ["color", "onClick"]))
+                                                      }), 128))
+                                                    ]))
+                                                  }), 128)),
+                                                  _cache[16] || (_cache[16] = _createElementVNode("div", { class: "text-caption text-medium-emphasis mt-3" }, "文件名预览", -1)),
+                                                  _createElementVNode("div", _hoisted_10, [
+                                                    (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(files.value, (file, index) => {
+                                                      return (_openBlock(), _createBlock(_component_VChip, {
+                                                        key: `${index}-${file}`,
+                                                        size: "small",
+                                                        variant: "outlined"
+                                                      }, {
+                                                        default: _withCtx(() => [
+                                                          _createTextVNode(_toDisplayString(file), 1)
+                                                        ]),
+                                                        _: 2
+                                                      }, 1024))
+                                                    }), 128))
+                                                  ]),
+                                                  ((config.value.export_layouts || []).includes('stacked'))
+                                                    ? (_openBlock(), _createElementBlock("div", _hoisted_11, " 叠行文件只标主语种；双语内容保留在字幕正文。 "))
+                                                    : _createCommentVNode("", true)
                                                 ]))
                                               : (field.control === 'lang-order')
-                                                ? (_openBlock(), _createElementBlock("div", _hoisted_9, [
-                                                    _createElementVNode("div", _hoisted_10, _toDisplayString(field.label), 1),
+                                                ? (_openBlock(), _createElementBlock("div", _hoisted_12, [
+                                                    _createElementVNode("div", _hoisted_13, _toDisplayString(field.label), 1),
                                                     (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value.target_languages || [], (lang, index) => {
                                                       return (_openBlock(), _createElementBlock("div", {
                                                         key: lang,
@@ -882,16 +1089,16 @@ return (_ctx, _cache) => {
                                                     }), 128))
                                                   ]))
                                                 : (field.control === 'endpoints')
-                                                  ? (_openBlock(), _createElementBlock("div", _hoisted_11, [
-                                                      _createElementVNode("div", _hoisted_12, [
-                                                        _createElementVNode("div", _hoisted_13, _toDisplayString(field.label), 1),
+                                                  ? (_openBlock(), _createElementBlock("div", _hoisted_14, [
+                                                      _createElementVNode("div", _hoisted_15, [
+                                                        _createElementVNode("div", _hoisted_16, _toDisplayString(field.label), 1),
                                                         _createVNode(_component_VSpacer),
                                                         _createVNode(_component_VBtn, {
                                                           size: "small",
                                                           class: "ss-touch",
                                                           onClick: addEndpoint
                                                         }, {
-                                                          default: _withCtx(() => [...(_cache[16] || (_cache[16] = [
+                                                          default: _withCtx(() => [...(_cache[17] || (_cache[17] = [
                                                             _createTextVNode("加线路", -1)
                                                           ]))]),
                                                           _: 1
@@ -930,13 +1137,13 @@ return (_ctx, _cache) => {
                                                               "hide-details": "",
                                                               "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
                                                             }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                                                            _createElementVNode("div", _hoisted_14, [
+                                                            _createElementVNode("div", _hoisted_17, [
                                                               _createVNode(_component_VBtn, {
                                                                 size: "small",
                                                                 class: "ss-touch",
                                                                 onClick: $event => (_ctx.$emit('test-endpoint', endpoint))
                                                               }, {
-                                                                default: _withCtx(() => [...(_cache[17] || (_cache[17] = [
+                                                                default: _withCtx(() => [...(_cache[18] || (_cache[18] = [
                                                                   _createTextVNode("测连通", -1)
                                                                 ]))]),
                                                                 _: 1
@@ -946,7 +1153,7 @@ return (_ctx, _cache) => {
                                                                 class: "ss-touch",
                                                                 onClick: $event => (_ctx.$emit('list-models', endpoint))
                                                               }, {
-                                                                default: _withCtx(() => [...(_cache[18] || (_cache[18] = [
+                                                                default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
                                                                   _createTextVNode("拉模型", -1)
                                                                 ]))]),
                                                                 _: 1
@@ -958,7 +1165,7 @@ return (_ctx, _cache) => {
                                                       }), 128))
                                                     ]))
                                                   : _createCommentVNode("", true),
-                          _createElementVNode("div", _hoisted_15, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
+                          _createElementVNode("div", _hoisted_18, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
                         ]))
                       }), 128))
                     ]),
@@ -972,7 +1179,7 @@ return (_ctx, _cache) => {
           _: 1
         }, 8, ["modelValue"])),
     (!__props.mobile)
-      ? (_openBlock(), _createElementBlock("div", _hoisted_16, [
+      ? (_openBlock(), _createElementBlock("div", _hoisted_19, [
           (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(grouped.value, (field) => {
             return (_openBlock(), _createElementBlock("div", {
               key: field.key,
@@ -984,9 +1191,12 @@ return (_ctx, _cache) => {
                     "model-value": config.value[field.key],
                     label: field.label,
                     color: "primary",
-                    "hide-details": "",
+                    disabled: field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset),
+                    hint: field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset) ? '当前命名方案不支持 default 标记。' : undefined,
+                    "persistent-hint": field.key === 'mark_default' && !_unref(supportsDefault)(config.value.export_preset),
+                    "hide-details": field.key !== 'mark_default' || _unref(supportsDefault)(config.value.export_preset),
                     "onUpdate:modelValue": $event => (setField(field.key, $event))
-                  }, null, 8, ["model-value", "label", "onUpdate:modelValue"]))
+                  }, null, 8, ["model-value", "label", "disabled", "hint", "persistent-hint", "hide-details", "onUpdate:modelValue"]))
                 : (field.control === 'textarea')
                   ? (_openBlock(), _createBlock(_component_VTextarea, {
                       key: 1,
@@ -1030,8 +1240,8 @@ return (_ctx, _cache) => {
                               "onUpdate:modelValue": $event => (setField(field.key, $event))
                             }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                           : (field.control === 'multi')
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_17, [
-                                _createElementVNode("div", _hoisted_18, _toDisplayString(field.label), 1),
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_20, [
+                                _createElementVNode("div", _hoisted_21, _toDisplayString(field.label), 1),
                                 (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(field.options, (option) => {
                                   return (_openBlock(), _createBlock(_component_VChip, {
                                     key: option.value,
@@ -1048,8 +1258,8 @@ return (_ctx, _cache) => {
                                 }), 128))
                               ]))
                             : (field.control === 'order')
-                              ? (_openBlock(), _createElementBlock("div", _hoisted_19, [
-                                  _createElementVNode("div", _hoisted_20, _toDisplayString(field.label), 1),
+                              ? (_openBlock(), _createElementBlock("div", _hoisted_22, [
+                                  _createElementVNode("div", _hoisted_23, _toDisplayString(field.label), 1),
                                   (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value[field.key] || [], (value, index) => {
                                     return (_openBlock(), _createElementBlock("div", {
                                       key: `${field.key}-${value}`,
@@ -1103,50 +1313,77 @@ return (_ctx, _cache) => {
                                     "onUpdate:modelValue": $event => (setField(field.key, $event))
                                   }, null, 8, ["model-value", "label", "items", "onUpdate:modelValue"]))
                                 : (field.control === 'preset')
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_21, [
-                                      _createElementVNode("div", _hoisted_22, _toDisplayString(field.label), 1),
-                                      _createVNode(_component_VRow, { dense: "" }, {
-                                        default: _withCtx(() => [
-                                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESETS), (item) => {
-                                            return (_openBlock(), _createBlock(_component_VCol, {
-                                              key: item.value,
-                                              cols: "12",
-                                              md: "4"
-                                            }, {
-                                              default: _withCtx(() => [
-                                                _createVNode(_component_VCard, {
-                                                  class: "ss-card",
-                                                  color: config.value.export_preset === item.value ? 'primary' : undefined,
-                                                  variant: "tonal",
-                                                  onClick: $event => (usePreset(item.value))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_24, [
+                                      _createElementVNode("div", _hoisted_25, _toDisplayString(field.label), 1),
+                                      (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(PRESET_GROUPS), (group) => {
+                                        return (_openBlock(), _createElementBlock("div", {
+                                          key: group.title,
+                                          class: "mb-4"
+                                        }, [
+                                          _createElementVNode("div", _hoisted_26, _toDisplayString(group.title), 1),
+                                          _createVNode(_component_VRow, { dense: "" }, {
+                                            default: _withCtx(() => [
+                                              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(group.items, (item) => {
+                                                return (_openBlock(), _createBlock(_component_VCol, {
+                                                  key: item.value,
+                                                  cols: "12",
+                                                  sm: "6",
+                                                  md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createVNode(_component_VCardTitle, { class: "text-subtitle-1" }, {
+                                                    _createVNode(_component_VCard, {
+                                                      class: "ss-card h-100",
+                                                      color: config.value.export_preset === item.value ? 'primary' : undefined,
+                                                      variant: "tonal",
+                                                      onClick: $event => (usePreset(item.value))
+                                                    }, {
                                                       default: _withCtx(() => [
-                                                        _createTextVNode(_toDisplayString(item.title), 1)
+                                                        _createVNode(_component_VCardTitle, { class: "text-subtitle-1" }, {
+                                                          default: _withCtx(() => [
+                                                            _createTextVNode(_toDisplayString(item.title), 1)
+                                                          ]),
+                                                          _: 2
+                                                        }, 1024),
+                                                        _createVNode(_component_VCardText, null, {
+                                                          default: _withCtx(() => [
+                                                            _createTextVNode(_toDisplayString(item.hint), 1)
+                                                          ]),
+                                                          _: 2
+                                                        }, 1024)
                                                       ]),
                                                       _: 2
-                                                    }, 1024),
-                                                    _createVNode(_component_VCardText, null, {
-                                                      default: _withCtx(() => [
-                                                        _createTextVNode(_toDisplayString(item.hint), 1)
-                                                      ]),
-                                                      _: 2
-                                                    }, 1024)
+                                                    }, 1032, ["color", "onClick"])
                                                   ]),
                                                   _: 2
-                                                }, 1032, ["color", "onClick"])
-                                              ]),
-                                              _: 2
-                                            }, 1024))
-                                          }), 128))
-                                        ]),
-                                        _: 1
-                                      })
+                                                }, 1024))
+                                              }), 128))
+                                            ]),
+                                            _: 2
+                                          }, 1024)
+                                        ]))
+                                      }), 128)),
+                                      _cache[20] || (_cache[20] = _createElementVNode("div", { class: "text-caption text-medium-emphasis mt-3" }, "文件名预览", -1)),
+                                      _createElementVNode("div", _hoisted_27, [
+                                        (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(files.value, (file, index) => {
+                                          return (_openBlock(), _createBlock(_component_VChip, {
+                                            key: `${index}-${file}`,
+                                            size: "small",
+                                            variant: "outlined"
+                                          }, {
+                                            default: _withCtx(() => [
+                                              _createTextVNode(_toDisplayString(file), 1)
+                                            ]),
+                                            _: 2
+                                          }, 1024))
+                                        }), 128))
+                                      ]),
+                                      ((config.value.export_layouts || []).includes('stacked'))
+                                        ? (_openBlock(), _createElementBlock("div", _hoisted_28, " 叠行文件只标主语种；双语内容保留在字幕正文。 "))
+                                        : _createCommentVNode("", true)
                                     ]))
                                   : (field.control === 'lang-order')
-                                    ? (_openBlock(), _createElementBlock("div", _hoisted_23, [
-                                        _createElementVNode("div", _hoisted_24, _toDisplayString(field.label), 1),
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_29, [
+                                        _createElementVNode("div", _hoisted_30, _toDisplayString(field.label), 1),
                                         (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(config.value.target_languages || [], (lang, index) => {
                                           return (_openBlock(), _createElementBlock("div", {
                                             key: lang,
@@ -1192,16 +1429,16 @@ return (_ctx, _cache) => {
                                         }), 128))
                                       ]))
                                     : (field.control === 'endpoints')
-                                      ? (_openBlock(), _createElementBlock("div", _hoisted_25, [
-                                          _createElementVNode("div", _hoisted_26, [
-                                            _createElementVNode("div", _hoisted_27, _toDisplayString(field.label), 1),
+                                      ? (_openBlock(), _createElementBlock("div", _hoisted_31, [
+                                          _createElementVNode("div", _hoisted_32, [
+                                            _createElementVNode("div", _hoisted_33, _toDisplayString(field.label), 1),
                                             _createVNode(_component_VSpacer),
                                             _createVNode(_component_VBtn, {
                                               size: "small",
                                               class: "ss-touch",
                                               onClick: addEndpoint
                                             }, {
-                                              default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
+                                              default: _withCtx(() => [...(_cache[21] || (_cache[21] = [
                                                 _createTextVNode("加线路", -1)
                                               ]))]),
                                               _: 1
@@ -1234,7 +1471,7 @@ return (_ctx, _cache) => {
                                                   "onUpdate:modelValue": [$event => ((endpoint.model) = $event), $event => (updateEndpoint(index, { model: $event }))],
                                                   label: "模型"
                                                 }, null, 8, ["modelValue", "onUpdate:modelValue"]),
-                                                _createElementVNode("div", _hoisted_28, [
+                                                _createElementVNode("div", _hoisted_34, [
                                                   _createVNode(_component_VSwitch, {
                                                     "model-value": endpoint.enabled,
                                                     label: "启用",
@@ -1268,13 +1505,13 @@ return (_ctx, _cache) => {
                                                   color: "primary",
                                                   "onUpdate:modelValue": $event => (updateEndpoint(index, { local_model: $event }))
                                                 }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                                                _createElementVNode("div", _hoisted_29, [
+                                                _createElementVNode("div", _hoisted_35, [
                                                   _createVNode(_component_VBtn, {
                                                     size: "small",
                                                     class: "ss-touch",
                                                     onClick: $event => (_ctx.$emit('test-endpoint', endpoint))
                                                   }, {
-                                                    default: _withCtx(() => [...(_cache[20] || (_cache[20] = [
+                                                    default: _withCtx(() => [...(_cache[22] || (_cache[22] = [
                                                       _createTextVNode("测连通", -1)
                                                     ]))]),
                                                     _: 1
@@ -1284,7 +1521,7 @@ return (_ctx, _cache) => {
                                                     class: "ss-touch",
                                                     onClick: $event => (_ctx.$emit('list-models', endpoint))
                                                   }, {
-                                                    default: _withCtx(() => [...(_cache[21] || (_cache[21] = [
+                                                    default: _withCtx(() => [...(_cache[23] || (_cache[23] = [
                                                       _createTextVNode("拉模型", -1)
                                                     ]))]),
                                                     _: 1
@@ -1296,9 +1533,9 @@ return (_ctx, _cache) => {
                                           }), 128))
                                         ]))
                                       : (field.control === 'style-editor')
-                                        ? (_openBlock(), _createElementBlock("div", _hoisted_30, [
-                                            _createElementVNode("div", _hoisted_31, _toDisplayString(field.label), 1),
-                                            _createElementVNode("div", _hoisted_32, [
+                                        ? (_openBlock(), _createElementBlock("div", _hoisted_36, [
+                                            _createElementVNode("div", _hoisted_37, _toDisplayString(field.label), 1),
+                                            _createElementVNode("div", _hoisted_38, [
                                               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_unref(STYLE_LOOKS), (look) => {
                                                 return (_openBlock(), _createBlock(_component_VChip, {
                                                   key: look.title,
@@ -1340,7 +1577,7 @@ return (_ctx, _cache) => {
                                                 style: _normalizeStyle({ ...stylePreview.value.main, bottom: stylePreview.value.stack === 'main_top' ? (stylePreview.value.langs[2] ? stylePreview.value.thirdBottom : stylePreview.value.langs[1] ? stylePreview.value.secondBottom : stylePreview.value.mainBottom) : stylePreview.value.mainBottom })
                                               }, " 这是主字幕 ", 4)
                                             ], 2),
-                                            _createElementVNode("div", _hoisted_33, " 这块 16:9 是整幅画面的缩小。主字号 " + _toDisplayString(assStyle.value.sizes[0]) + " 约占高度 " + _toDisplayString(_unref(frameShare)(assStyle.value.sizes[0])) + "，底边距 " + _toDisplayString(assStyle.value.margin_v) + " 约占 " + _toDisplayString(_unref(frameShare)(assStyle.value.margin_v)) + "。成片按同一比例放大整幅画面。 ", 1),
+                                            _createElementVNode("div", _hoisted_39, " 这块 16:9 是整幅画面的缩小。主字号 " + _toDisplayString(assStyle.value.sizes[0]) + " 约占高度 " + _toDisplayString(_unref(frameShare)(assStyle.value.sizes[0])) + "，底边距 " + _toDisplayString(assStyle.value.margin_v) + " 约占 " + _toDisplayString(_unref(frameShare)(assStyle.value.margin_v)) + "。成片按同一比例放大整幅画面。 ", 1),
                                             _createVNode(_component_VRow, { dense: "" }, {
                                               default: _withCtx(() => [
                                                 _createVNode(_component_VCol, {
@@ -1375,14 +1612,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_34, [
-                                                      _cache[22] || (_cache[22] = _createElementVNode("span", null, "对白颜色", -1)),
+                                                    _createElementVNode("label", _hoisted_40, [
+                                                      _cache[24] || (_cache[24] = _createElementVNode("span", null, "对白颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.primary_color,
                                                         onInput: _cache[4] || (_cache[4] = $event => (setStyle({ primary_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_35)
+                                                      }, null, 40, _hoisted_41)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1392,14 +1629,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_36, [
-                                                      _cache[23] || (_cache[23] = _createElementVNode("span", null, "描边颜色", -1)),
+                                                    _createElementVNode("label", _hoisted_42, [
+                                                      _cache[25] || (_cache[25] = _createElementVNode("span", null, "描边颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.outline_color,
                                                         onInput: _cache[5] || (_cache[5] = $event => (setStyle({ outline_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_37)
+                                                      }, null, 40, _hoisted_43)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1409,14 +1646,14 @@ return (_ctx, _cache) => {
                                                   md: "4"
                                                 }, {
                                                   default: _withCtx(() => [
-                                                    _createElementVNode("label", _hoisted_38, [
-                                                      _cache[24] || (_cache[24] = _createElementVNode("span", null, "顶注颜色", -1)),
+                                                    _createElementVNode("label", _hoisted_44, [
+                                                      _cache[26] || (_cache[26] = _createElementVNode("span", null, "顶注颜色", -1)),
                                                       _createElementVNode("input", {
                                                         type: "color",
                                                         class: "ss-color-input",
                                                         value: assStyle.value.note_color,
                                                         onInput: _cache[6] || (_cache[6] = $event => (setStyle({ note_color: $event.target.value })))
-                                                      }, null, 40, _hoisted_39)
+                                                      }, null, 40, _hoisted_45)
                                                     ])
                                                   ]),
                                                   _: 1
@@ -1513,7 +1750,7 @@ return (_ctx, _cache) => {
                                               ]),
                                               _: 1
                                             }),
-                                            _createElementVNode("div", _hoisted_40, [
+                                            _createElementVNode("div", _hoisted_46, [
                                               _createVNode(_component_VSwitch, {
                                                 "model-value": assStyle.value.bold,
                                                 label: "粗体",
@@ -1534,7 +1771,7 @@ return (_ctx, _cache) => {
                                                   variant: "tonal",
                                                   class: "mt-3"
                                                 }, {
-                                                  default: _withCtx(() => [...(_cache[25] || (_cache[25] = [
+                                                  default: _withCtx(() => [...(_cache[27] || (_cache[27] = [
                                                     _createTextVNode(" 字体和颜色只写入 ASS。当前没勾 ASS，播放器会用自己的字体。 ", -1)
                                                   ]))]),
                                                   _: 1
@@ -1547,7 +1784,7 @@ return (_ctx, _cache) => {
                                                   class: "ss-touch mt-2",
                                                   onClick: ensureAssFormat
                                                 }, {
-                                                  default: _withCtx(() => [...(_cache[26] || (_cache[26] = [
+                                                  default: _withCtx(() => [...(_cache[28] || (_cache[28] = [
                                                     _createTextVNode("同时写出 ASS", -1)
                                                   ]))]),
                                                   _: 1
@@ -1555,7 +1792,7 @@ return (_ctx, _cache) => {
                                               : _createCommentVNode("", true)
                                           ]))
                                         : _createCommentVNode("", true),
-              _createElementVNode("div", _hoisted_41, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
+              _createElementVNode("div", _hoisted_47, _toDisplayString(field.purpose) + " " + _toDisplayString(field.after), 1)
             ]))
           }), 128))
         ]))

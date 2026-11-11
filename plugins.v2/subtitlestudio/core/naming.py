@@ -1,22 +1,13 @@
-"""导出文件名与语种码。
+"""媒体服务器与播放客户端的字幕命名规则。
 
-合同：`{stem}[.{flags}][.{lang}][.{title}][.{flags}].{ext}`
-搜索偏好 ≠ 导出包。预设只改默认勾选和语言码，不是最终文件清单。
-历史版本记在插件库，不再用 `.ai` / `.aiasr` 当文件名。
-ASR 原轨只有本次真的跑了 Whisper 才写，不标 default。
-特效 notes.ass、SDH、ASR 不进「语种 × 版式 × 格式」乘法。
-
-语言码对齐主流媒体库 / 播放器，而不是内部 id：
-- MoviePilot 整理：`DEFAULT_SUB=zh-cn` → `{stem}.default.chi.zh-cn.ext`
-- Emby 官方：`zh-CN` / `zh-TW`，`.default` / `.forced` / `.sdh`
-- Jellyfin：点分 token，语言与 default/sdh 任意顺序
-- Plex：ISO 639-1/2，`chi` / `eng`，不认 default
-- Infuse：同目录、同 stem；中文官方建议 `cn`，也认 `zh-CN`
-- 飞牛影视：社区指南示例为同目录同主体名 `.zh.srt`；预设使用 `.zh` / `.en` 等语言后缀，不写 `.default`
+命名配置集中在同目录的 ``naming_presets.json``，前端预览导入同一份数据。
+字幕格式单独选择；叠行字幕的文件名使用主语种码，双语文本保留在字幕内容中。
+MoviePilot 兼容格式、旧版 web 配置也保留为独立 profile。
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
@@ -43,96 +34,16 @@ LANG_ALIASES = {
 }
 
 LANG_CATALOG = {
-    "zh-Hans": {
-        "label": "简中",
-        "codes": {
-            "library_zh": "chi.zh-cn",
-            "plex": "chi",
-            "web": "zh-CN",
-            "fnos": "zh",
-            "legacy": "chi",
-        },
-    },
-    "zh-Hant": {
-        "label": "繁中",
-        "codes": {
-            "library_zh": "zh-tw",
-            "plex": "cht",
-            "web": "zh-TW",
-            "fnos": "zh-TW",
-            "legacy": "cht",
-        },
-    },
-    "en": {
-        "label": "英文",
-        "codes": {
-            "library_zh": "eng",
-            "plex": "eng",
-            "web": "en",
-            "fnos": "en",
-            "legacy": "eng",
-        },
-    },
-    "ja": {
-        "label": "日文",
-        "codes": {
-            "library_zh": "ja",
-            "plex": "jpn",
-            "web": "ja",
-            "fnos": "ja",
-            "legacy": "jpn",
-        },
-    },
-    "ko": {
-        "label": "韩文",
-        "codes": {
-            "library_zh": "ko",
-            "plex": "kor",
-            "web": "ko",
-            "fnos": "ko",
-            "legacy": "kor",
-        },
-    },
+    "zh-Hans": {"label": "简中"},
+    "zh-Hant": {"label": "繁中"},
+    "en": {"label": "英文"},
+    "ja": {"label": "日文"},
+    "ko": {"label": "韩文"},
 }
 
-PRESETS = {
-    "library_zh": {
-        "label": "媒体库 / MoviePilot",
-        "hint": "default.chi.zh-cn · 对齐整理记录",
-        "mark_default": True,
-        "formats": ["srt"],
-        "flag_first": True,
-    },
-    "plex": {
-        "label": "Plex",
-        "hint": "chi / eng · 不标 default",
-        "mark_default": False,
-        "formats": ["srt"],
-        "flag_first": False,
-    },
-    "fnos": {
-        "label": "飞牛影视",
-        "hint": "zh / en · 同主体名，不标 default",
-        "mark_default": False,
-        "formats": ["srt"],
-        "flag_first": False,
-    },
-    "web": {
-        "label": "Infuse / 网页",
-        "hint": "zh-CN · 再勾 VTT",
-        "mark_default": True,
-        "formats": ["srt", "vtt"],
-        "flag_first": False,
-    },
-    "legacy": {
-        "label": "兼容旧库",
-        "hint": "chi / 叠行标主语种",
-        "mark_default": False,
-        "formats": ["srt"],
-        "flag_first": False,
-    },
-}
-
+with Path(__file__).with_name("naming_presets.json").open("r", encoding="utf-8") as _preset_file:
+    _PRESET_ITEMS = json.load(_preset_file)["profiles"]
+PRESETS = {item["id"]: item for item in _PRESET_ITEMS}
 PRESET_IDS = tuple(PRESETS)
 
 
@@ -143,8 +54,14 @@ def canonical_lang(lang_id: str) -> str:
 
 def lang_code(lang_id: str, preset: str) -> str:
     lang = canonical_lang(lang_id)
-    item = LANG_CATALOG.get(lang) or LANG_CATALOG["zh-Hans"]
-    return item["codes"].get(preset) or item["codes"]["fnos"]
+    profile = PRESETS.get(preset) or PRESETS["fnos"]
+    codes = profile.get("language_codes") or {}
+    return str(codes.get(lang) or codes.get("zh-Hans") or lang)
+
+
+def _stem_separator(preset: str) -> str:
+    profile = PRESETS.get(preset) or PRESETS["fnos"]
+    return str(profile.get("stem_separator") or ".")
 
 
 def font_size_for_rank(rank: int, config: Dict[str, Any] | None = None) -> int:
@@ -169,58 +86,66 @@ def build_filename(
     title: str = "",
     flags: Sequence[str] = (),
     flag_first: bool = False,
+    stem_separator: str = ".",
 ) -> str:
-    parts = [stem]
     lang_part = ".".join(lang for lang in langs if lang)
     flag_parts = [flag for flag in flags if flag]
+    suffix_parts: List[str] = []
     if flag_first:
-        parts.extend(flag_parts)
+        suffix_parts.extend(flag_parts)
         if lang_part:
-            parts.append(lang_part)
+            suffix_parts.append(lang_part)
         if title:
-            parts.append(title)
+            suffix_parts.append(title)
     else:
         if lang_part:
-            parts.append(lang_part)
+            suffix_parts.append(lang_part)
         if title:
-            parts.append(title)
-        parts.extend(flag_parts)
-    suffix = ext.lstrip(".")
-    return ".".join(parts) + f".{suffix}"
+            suffix_parts.append(title)
+        suffix_parts.extend(flag_parts)
+    suffix = ".".join(suffix_parts)
+    prefix = f"{stem}{stem_separator}{suffix}" if suffix else stem
+    return f"{prefix}.{ext.lstrip('.')}"
 
 
 def _flag_first(preset: str) -> bool:
     return bool((PRESETS.get(preset) or {}).get("flag_first"))
 
 
-def _default_flags(mark_default: bool, lang_id: str) -> List[str]:
-    if mark_default and canonical_lang(lang_id).startswith("zh"):
-        return ["default"]
-    return []
+def _default_flags(mark_default: bool, lang_id: str, preset: str) -> List[str]:
+    profile = PRESETS.get(preset) or PRESETS["fnos"]
+    if not mark_default or not profile.get("supports_default"):
+        return []
+    if profile.get("default_language") == "zh" and not canonical_lang(lang_id).startswith("zh"):
+        return []
+    return ["default"]
 
 
 def _stacked_filename(stem: str, codes: Sequence[str], fmt: str, *, preset: str, flag_first: bool) -> str:
-    if preset == "legacy":
-        primary = codes[0] if codes else "chi"
-        return build_filename(stem, [primary], fmt, flag_first=flag_first)
-    if preset == "fnos":
-        # SRT 本身没有语言元数据；飞牛示例按同名文件加单一语言后缀。
-        # 叠行内容按第一目标语言标记，避免组合语言码被播放器显示为未知语言。
-        return build_filename(stem, [codes[0] if codes else "zh"], fmt, flag_first=flag_first)
-    # 叠行文件只标主语种。Jellyfin 会把最后一个 token 当语言，写成 zh-CN.en 会被认成英文。
-    primary = codes[0] if codes else "chi.zh-cn"
-    return build_filename(stem, [primary], fmt, title="bilingual", flag_first=flag_first)
+    # Stacked text still has one track language. Keep the filename on the primary
+    # language so media libraries never parse a made-up combined language code.
+    primary = codes[0] if codes else lang_code("zh-Hans", preset)
+    return build_filename(
+        stem,
+        [primary],
+        fmt,
+        flag_first=flag_first,
+        stem_separator=_stem_separator(preset),
+    )
 
 
 def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
     """语种 × 版式 × 格式 的笛卡尔积。特效 / SDH / ASR 由调用方另加。"""
     preset = str(config.get("export_preset") or "fnos")
+    preset = preset if preset in PRESETS else "fnos"
     languages = list(config.get("target_languages") or ["zh-Hans"])[:3]
     layouts = [item for item in (config.get("export_layouts") or ["mono"]) if item in LAYOUTS]
     formats = [item for item in (config.get("export_formats") or ["srt"]) if item in FORMATS]
-    mark_default = bool(config.get("mark_default")) and preset not in {"plex", "fnos"}
+    profile = PRESETS[preset]
+    mark_default = bool(config.get("mark_default")) and bool(profile.get("supports_default"))
     stack = str(config.get("lang_stack") or "main_bottom")
     flag_first = _flag_first(preset)
+    stem_separator = _stem_separator(preset)
     files: List[Dict[str, Any]] = []
     if not languages or not layouts or not formats:
         return files
@@ -233,14 +158,14 @@ def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
         for fmt in formats:
             if layout == "mono":
                 primary = languages[0]
-                flags = _default_flags(mark_default, primary)
+                flags = _default_flags(mark_default, primary, preset)
                 files.append({
                     "kind": "dialogue",
                     "layout": layout,
                     "format": fmt,
                     "langs": [primary],
                     "codes": [lang_code(primary, preset)],
-                    "filename": build_filename(stem, [lang_code(primary, preset)], fmt, flags=flags, flag_first=flag_first),
+                    "filename": build_filename(stem, [lang_code(primary, preset)], fmt, flags=flags, flag_first=flag_first, stem_separator=stem_separator),
                     "mark_default": bool(flags),
                     "stack": stack,
                     "sizes": [font_size_for_rank(0, config)],
@@ -262,14 +187,14 @@ def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
                 })
             elif layout == "split":
                 for index, lang in enumerate(languages):
-                    flags = _default_flags(mark_default, lang) if index == 0 else []
+                    flags = _default_flags(mark_default, lang, preset) if index == 0 else []
                     files.append({
                         "kind": "dialogue",
                         "layout": layout,
                         "format": fmt,
                         "langs": [lang],
                         "codes": [lang_code(lang, preset)],
-                        "filename": build_filename(stem, [lang_code(lang, preset)], fmt, flags=flags, flag_first=flag_first),
+                        "filename": build_filename(stem, [lang_code(lang, preset)], fmt, flags=flags, flag_first=flag_first, stem_separator=stem_separator),
                         "mark_default": bool(flags),
                         "stack": stack,
                         "sizes": [font_size_for_rank(0, config)],
@@ -280,9 +205,11 @@ def export_plan(config: Dict[str, Any], stem: str) -> List[Dict[str, Any]]:
 def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, source_lang: str = "en") -> List[Dict[str, Any]]:
     """特效 / SDH / ASR 原轨。不进乘法，各有开关。"""
     preset = str(config.get("export_preset") or "fnos")
+    preset = preset if preset in PRESETS else "fnos"
     files: List[Dict[str, Any]] = []
     primary = (config.get("target_languages") or ["zh-Hans"])[0]
     flag_first = _flag_first(preset)
+    stem_separator = _stem_separator(preset)
     primary_code = lang_code(primary, preset)
     spec = style_from_config(config)
     if config.get("effects_enabled"):
@@ -292,7 +219,7 @@ def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, so
             "format": "ass",
             "langs": [primary],
             "codes": [primary_code],
-            "filename": build_filename(stem, [primary_code], "ass", title="notes", flag_first=flag_first),
+            "filename": build_filename(stem, [primary_code], "ass", title="notes", flag_first=flag_first, stem_separator=stem_separator),
             "mark_default": False,
             "stack": "",
             "sizes": [spec["note_size"]],
@@ -304,7 +231,7 @@ def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, so
             "format": "srt",
             "langs": [primary],
             "codes": [primary_code],
-            "filename": build_filename(stem, [primary_code], "srt", title="sdh", flag_first=flag_first),
+            "filename": build_filename(stem, [primary_code], "srt", title="sdh", flag_first=flag_first, stem_separator=stem_separator),
             "mark_default": False,
             "stack": "",
             "sizes": [font_size_for_rank(0, config)],
@@ -317,7 +244,7 @@ def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, so
             "format": "srt",
             "langs": [canonical_lang(source_lang)],
             "codes": [asr_code],
-            "filename": build_filename(stem, [asr_code], "srt", title="asr", flag_first=flag_first),
+            "filename": build_filename(stem, [asr_code], "srt", title="asr", flag_first=flag_first, stem_separator=stem_separator),
             "mark_default": False,
             "stack": "",
             "sizes": [font_size_for_rank(0, config)],
@@ -326,16 +253,11 @@ def extra_tracks(config: Dict[str, Any], stem: str, *, asr_ran: bool = False, so
 
 
 def apply_preset(config: Dict[str, Any], preset: str) -> Dict[str, Any]:
-    """点预设只改默认勾选，仍可手改。Plex / 飞牛强制关掉 default。"""
+    """Apply a profile's supported default-marker behavior without changing formats."""
     next_config = dict(config)
     spec = PRESETS.get(preset) or PRESETS["fnos"]
     next_config["export_preset"] = preset if preset in PRESETS else "fnos"
-    next_config["mark_default"] = bool(spec["mark_default"])
-    formats = list(next_config.get("export_formats") or [])
-    for item in spec["formats"]:
-        if item not in formats:
-            formats.append(item)
-    next_config["export_formats"] = formats
+    next_config["mark_default"] = bool(spec.get("supports_default") and spec.get("mark_default"))
     return next_config
 
 

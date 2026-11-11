@@ -146,7 +146,7 @@ class StudioApiMixin:
         current = normalize_plugin_config(self.get_config() or {})
         payload = normalize_plugin_config(body or {})
         payload = _restore_masked_secrets(payload, current)
-        if payload.get("export_preset"):
+        if payload.get("export_preset") and payload["export_preset"] != current.get("export_preset"):
             payload = apply_export_preset(payload, payload["export_preset"])
         self.update_config(payload)
         self.init_plugin(payload)

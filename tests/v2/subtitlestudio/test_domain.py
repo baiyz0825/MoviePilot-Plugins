@@ -212,7 +212,7 @@ def test_export_plan_cartesian_and_extras(gen: str = GEN):
     }, "Movie")
     names = [item["filename"] for item in files]
     assert "Movie.default.chi.zh-cn.srt" in names
-    assert any("bilingual" in name or "chi&eng" in name for name in names)
+    assert "Movie.chi.zh-cn.srt" in names
     extras = naming.extra_tracks({"effects_enabled": True, "enable_sdh": True, "save_asr_track": True, "target_languages": ["zh-Hans"]}, "Movie", asr_ran=True)
     kinds = {item["kind"] for item in extras}
     assert kinds == {"notes", "sdh", "asr"}

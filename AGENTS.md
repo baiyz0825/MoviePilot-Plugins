@@ -81,7 +81,7 @@
 ## 业务红线
 
 - STRM：只搜外挂 / 翻译 / 导出；**永不 ASR、不调轴**。
-- 搜索偏好 ≠ 导出包。导出预设：`library_zh` / `plex` / `fnos` / `web` / `legacy`。
+- 搜索偏好 ≠ 导出包。导出预设：`plex` / `emby` / `jellyfin` / `fnos` / `infuse_local` / `library_zh` / `legacy`；`web` 保留为旧配置兼容 ID。
 - 目标语言 1–3 种，顺序即字号层级。不生成 SUB/IDX/PGS。
 - 特效是顶注 / 保留特效 ASS，不是卡拉 OK、不是飞字。
 - 空查询 `success=true`，用 `data` 表示空；`message` 不写堆栈、Cookie、令牌、内部路径。

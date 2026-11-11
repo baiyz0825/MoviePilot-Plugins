@@ -1,0 +1,152 @@
+{
+  "profiles": [
+    {
+      "id": "plex",
+      "title": "Plex",
+      "group": "媒体服务器",
+      "hint": "使用 chi / eng 语言码；不写 default。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "chi",
+        "zh-Hant": "cht",
+        "en": "eng",
+        "ja": "jpn",
+        "ko": "kor"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": false,
+      "mark_default": false
+    },
+    {
+      "id": "emby",
+      "title": "Emby",
+      "group": "媒体服务器",
+      "hint": "使用 zh-CN / zh-TW、eng 等语言码；支持 default、forced、SDH 标记。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "zh-CN",
+        "zh-Hant": "zh-TW",
+        "en": "eng",
+        "ja": "jpn",
+        "ko": "kor"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": true,
+      "mark_default": true,
+      "default_language": "primary"
+    },
+    {
+      "id": "jellyfin",
+      "title": "Jellyfin",
+      "group": "媒体服务器",
+      "hint": "使用 zh-Hans / zh-Hant、en 等语言码；支持 default、forced、SDH 标记。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "zh-Hans",
+        "zh-Hant": "zh-Hant",
+        "en": "en",
+        "ja": "ja",
+        "ko": "ko"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": true,
+      "mark_default": true,
+      "default_language": "primary"
+    },
+    {
+      "id": "fnos",
+      "title": "飞牛影视",
+      "group": "媒体服务器",
+      "hint": "使用 zh / en 等短语言码；实际识别效果请以文件名预览和飞牛版本为准。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "zh",
+        "zh-Hant": "zh-TW",
+        "en": "en",
+        "ja": "ja",
+        "ko": "ko"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": false,
+      "mark_default": false
+    },
+    {
+      "id": "infuse_local",
+      "title": "Infuse · 文件夹 / SMB",
+      "group": "客户端直读",
+      "hint": "视频同目录、同主体名，语言码用连字符，例如 Movie-en.srt。经媒体服务器播放时请选择服务器预设。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "zh-CN",
+        "zh-Hant": "zh-TW",
+        "en": "en",
+        "ja": "ja",
+        "ko": "ko"
+      },
+      "stem_separator": "-",
+      "flag_first": false,
+      "supports_default": false,
+      "mark_default": false
+    },
+    {
+      "id": "library_zh",
+      "title": "MoviePilot 整理格式",
+      "group": "MoviePilot / 兼容",
+      "hint": "使用 default.chi.zh-cn 命名，兼容 MoviePilot 整理记录。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "chi.zh-cn",
+        "zh-Hant": "zh-tw",
+        "en": "eng",
+        "ja": "ja",
+        "ko": "ko"
+      },
+      "stem_separator": ".",
+      "flag_first": true,
+      "supports_default": true,
+      "mark_default": true,
+      "default_language": "zh"
+    },
+    {
+      "id": "legacy",
+      "title": "旧库兼容 · ISO 码",
+      "group": "MoviePilot / 兼容",
+      "hint": "沿用 chi / eng 等单一语言码；叠行文件标主语种。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "chi",
+        "zh-Hant": "cht",
+        "en": "eng",
+        "ja": "jpn",
+        "ko": "kor"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": false,
+      "mark_default": false
+    },
+    {
+      "id": "web",
+      "title": "旧版网页预设 · 兼容",
+      "group": "MoviePilot / 兼容",
+      "hint": "保留已有 web 配置的 zh-CN 等点分命名；新配置可选 Infuse · 文件夹 / SMB。",
+      "visible": true,
+      "language_codes": {
+        "zh-Hans": "zh-CN",
+        "zh-Hant": "zh-TW",
+        "en": "en",
+        "ja": "ja",
+        "ko": "ko"
+      },
+      "stem_separator": ".",
+      "flag_first": false,
+      "supports_default": true,
+      "mark_default": true,
+      "default_language": "zh"
+    }
+  ]
+}

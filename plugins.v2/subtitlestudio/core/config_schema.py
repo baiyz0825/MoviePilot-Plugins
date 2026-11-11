@@ -11,7 +11,7 @@ import uuid
 from typing import Any, Dict, List, Tuple
 
 from .models import Endpoint, FORMATS, LAYOUTS, STRATEGIES
-from .naming import PRESET_IDS, apply_preset, validate_target_languages
+from .naming import PRESETS, PRESET_IDS, apply_preset, validate_target_languages
 from .style import DEFAULT_ASS_STYLE, normalize_ass_style
 from .paths import join_multiline_paths, parse_multiline_paths
 
@@ -137,8 +137,8 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "search", "group": "搜索", "key": "opensubtitles_api_key", "label": "OpenSubtitles API Key", "control": "password", "default": "",
      "purpose": "OpenSubtitles 的钥匙。", "after": "不填则该源是灰的。"},
     {"pane": "export", "group": "导出", "key": "export_preset", "label": "导出预设", "control": "preset", "default": "fnos",
-     "purpose": "一键改语言码、是否 default、默认勾哪些格式。",
-     "after": "新安装默认使用飞牛兼容的 zh/en 等单一语言后缀；社区指南示例为视频 Movie.mkv 配同目录 Movie.zh.srt。已有配置保留原来的预设，可在这里切换。MoviePilot 预设写 default.chi.zh-cn；Plex 用 chi/eng；Infuse/网页用 zh-CN 并勾 VTT。"},
+     "purpose": "按字幕接收方选择语言码和文件名规则；输出格式在下方单独选择。",
+     "after": "媒体服务器分别提供 Plex、Emby、Jellyfin 和飞牛预设。Infuse 预设仅用于同目录或 SMB 文件直读；通过 Plex、Emby 或 Jellyfin 播放时请选择对应服务器。MoviePilot 整理和旧版网页命名放在兼容分组。"},
     {"pane": "export", "group": "导出", "key": "target_languages", "label": "目标语种（有序，1–3）", "control": "lang-order",
      "default": ["zh-Hans"],
      "purpose": "这次要生成哪些文种。最少 1 个，最多 3 个。列表顺序就是主、次、再次。",
@@ -150,14 +150,14 @@ FIELDS: List[Dict[str, Any]] = [
     {"pane": "export", "group": "导出", "key": "export_layouts", "label": "版式", "control": "multi", "default": ["mono"],
      "options": [{"title": "单语", "value": "mono"}, {"title": "叠行", "value": "stacked"}, {"title": "分轨", "value": "split"}],
      "purpose": "选择一种字幕排版。",
-     "after": "单语：只写主语种。叠行：按顺序把 2–3 种语写进同一文件。分轨：每种语各一份。只能选一种。"},
+     "after": "单语：只写主语种。叠行：按顺序把 2–3 种语写进同一文件，文件名只标主语种。分轨：每种语各一份。只能选一种。"},
     {"pane": "export", "group": "导出", "key": "export_formats", "label": "输出格式", "control": "multi", "default": ["srt"],
      "options": [{"title": "SRT", "value": "srt"}, {"title": "ASS", "value": "ass"}, {"title": "VTT", "value": "vtt"}],
      "purpose": "对白写成哪些容器。勾几个写几份。",
-     "after": "SRT：电视和媒体库最稳。ASS：对白要样式或换色双语。VTT：Infuse/网页。特效 notes.ass、SDH、ASR 原轨不走这个乘法。"},
-    {"pane": "export", "group": "导出", "key": "mark_default", "label": "主中文标 default", "control": "switch", "default": True,
-     "purpose": "文件名加 .default，让播放器默认选中文轨。",
-     "after": "开：按 MoviePilot 习惯写成 .default.chi.zh-cn，Emby/Jellyfin 会当默认字幕。Plex 和飞牛不认这个标记，对应预设会关掉。"},
+     "after": "SRT：电视和媒体库最稳。ASS：对白要样式或换色双语。VTT：浏览器和支持 VTT 的客户端。格式选择独立于平台预设；多语叠行未勾 ASS 时会自动补一份以保存字号。特效 notes.ass、SDH、ASR 原轨不走这个乘法。"},
+    {"pane": "export", "group": "导出", "key": "mark_default", "label": "主字幕标 default", "control": "switch", "default": True,
+     "purpose": "在支持该标记的平台文件名中加入 .default。",
+     "after": "所选预设支持时才会写入。Plex、飞牛影视和 Infuse 文件夹/SMB 预设会关闭该标记；Emby、Jellyfin 和 MoviePilot 整理预设默认开启。"},
     {"pane": "export", "group": "导出", "key": "encoding", "label": "文件编码", "control": "select", "default": "utf-8",
      "options": [{"title": "UTF-8", "value": "utf-8"}, {"title": "UTF-8 BOM", "value": "utf-8-sig"},
                  {"title": "GB18030", "value": "gb18030"}],
@@ -453,7 +453,8 @@ def normalize_plugin_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         else:
             normalized[key] = incoming if incoming is not None else default
 
-    if normalized["export_preset"] in {"plex", "fnos"}:
+    preset = PRESETS.get(normalized["export_preset"]) or PRESETS["fnos"]
+    if not preset.get("supports_default"):
         normalized["mark_default"] = False
     normalized["target_languages"] = validate_target_languages(normalized.get("target_languages"))
     normalized["export_layouts"] = _pick_list(normalized.get("export_layouts"), tuple(LAYOUTS), ["mono"])

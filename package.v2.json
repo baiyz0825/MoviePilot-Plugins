@@ -3,7 +3,7 @@
         "name": "字幕工坊",
         "description": "独立完成字幕搜索、识别、免费/大模型翻译、特效顶注、导出包和工作台预览，不委托其它字幕插件。",
         "labels": "字幕,翻译,ASR,工作台",
-        "version": "1.0.19",
+        "version": "1.0.20",
         "icon": "https://raw.githubusercontent.com/baiyz0825/MoviePilot-Plugins/main/icons/autosubtitles.jpeg",
         "author": "baiyz0825",
         "author_url": "https://github.com/baiyz0825",
@@ -13,7 +13,7 @@
         "v3": false,
         "release": true,
         "history": {
-            "v1.0.19": "修正双语叠行字幕文件名语言码，避免媒体库显示未知语言",
+            "v1.0.20": "按媒体服务器和客户端细分字幕命名预设，统一预览与导出规则",
             "v1.0.17": "将 faster-whisper 设为必需依赖；增加内嵌字幕提取进度日志并支持失败轨道回退",
             "v1.0.16": "新增按目标语种识别外挂与内嵌字幕的存量扫描，仅为缺失语种入队并采用飞牛短语言码命名",
             "v1.0.15": "修正在线字幕语言识别与源键迁移，拆分中英双语 ASS/SRT/VTT，拒绝无效译文并修复多语预览重复",

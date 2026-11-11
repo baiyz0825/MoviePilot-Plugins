@@ -1,3 +1,5 @@
+import namingPresetData from '../../core/naming_presets.json'
+
 export const LANGS = [
   { title: '简中', value: 'zh-Hans' },
   { title: '繁中', value: 'zh-Hant' },
@@ -6,21 +8,21 @@ export const LANGS = [
   { title: '韩文', value: 'ko' },
 ]
 
-export const PRESETS = [
-  { value: 'library_zh', title: '媒体库 / MoviePilot', hint: 'default.chi.zh-cn · 对齐整理记录' },
-  { value: 'plex', title: 'Plex', hint: 'chi / eng · 不标 default' },
-  { value: 'fnos', title: '飞牛影视', hint: 'zh / en · 同主体名，不标 default' },
-  { value: 'web', title: 'Infuse / 网页', hint: 'zh-CN · 再勾 VTT' },
-  { value: 'legacy', title: '兼容旧库', hint: 'chi / 叠行标主语种' },
-]
+const PRESET_BY_ID = Object.fromEntries(
+  namingPresetData.profiles.map(profile => [profile.id, profile]),
+)
 
-const LANG_CODES = {
-  'zh-Hans': { library_zh: 'chi.zh-cn', plex: 'chi', web: 'zh-CN', fnos: 'zh', legacy: 'chi' },
-  'zh-Hant': { library_zh: 'zh-tw', plex: 'cht', web: 'zh-TW', fnos: 'zh-TW', legacy: 'cht' },
-  en: { library_zh: 'eng', plex: 'eng', web: 'en', fnos: 'en', legacy: 'eng' },
-  ja: { library_zh: 'ja', plex: 'jpn', web: 'ja', fnos: 'ja', legacy: 'jpn' },
-  ko: { library_zh: 'ko', plex: 'kor', web: 'ko', fnos: 'ko', legacy: 'kor' },
+export const PRESETS = namingPresetData.profiles
+  .filter(profile => profile.visible !== false)
+  .map(profile => ({ value: profile.id, title: profile.title, hint: profile.hint, group: profile.group }))
+
+const presetGroups = new Map()
+for (const preset of PRESETS) {
+  const items = presetGroups.get(preset.group) || []
+  items.push(preset)
+  presetGroups.set(preset.group, items)
 }
+export const PRESET_GROUPS = Array.from(presetGroups, ([title, items]) => ({ title, items }))
 
 export const PANES = [
   ['basic', '基础'],
@@ -138,71 +140,83 @@ export function overlayCss(style, rank = 0, kind = 'dialogue', scale = 1) {
   }
 }
 
-function langCode(lang, preset) {
-  return LANG_CODES[lang]?.[preset] || LANG_CODES[lang]?.fnos || lang
+function presetSpec(preset) {
+  return PRESET_BY_ID[preset] || PRESET_BY_ID.fnos
 }
 
-function buildFilename(stem, langs, ext, { title = '', flags = [], flagFirst = false } = {}) {
-  const parts = [stem]
+function langCode(lang, preset) {
+  const profile = presetSpec(preset)
+  return profile.language_codes?.[lang] || profile.language_codes?.['zh-Hans'] || lang
+}
+
+function buildFilename(stem, langs, ext, { title = '', flags = [], flagFirst = false, stemSeparator = '.' } = {}) {
   const langPart = langs.filter(Boolean).join('.')
-  const flagParts = flags.filter(Boolean)
+  const suffix = []
   if (flagFirst) {
-    parts.push(...flagParts)
-    if (langPart) parts.push(langPart)
-    if (title) parts.push(title)
+    suffix.push(...flags.filter(Boolean))
+    if (langPart) suffix.push(langPart)
+    if (title) suffix.push(title)
   } else {
-    if (langPart) parts.push(langPart)
-    if (title) parts.push(title)
-    parts.push(...flagParts)
+    if (langPart) suffix.push(langPart)
+    if (title) suffix.push(title)
+    suffix.push(...flags.filter(Boolean))
   }
-  return `${parts.join('.')}.${ext}`
+  const prefix = suffix.length ? `${stem}${stemSeparator}${suffix.join('.')}` : stem
+  return `${prefix}.${ext}`
+}
+
+export function supportsDefault(preset) {
+  return Boolean(presetSpec(preset).supports_default)
+}
+
+function defaultFlags(profile, enabled, lang) {
+  if (!enabled || !profile.supports_default) return []
+  if (profile.default_language === 'zh' && !lang?.startsWith('zh')) return []
+  return ['default']
 }
 
 export function applyPreset(config, preset) {
-  const next = { ...config, export_preset: preset }
-  if (preset === 'plex' || preset === 'fnos') next.mark_default = false
-  if (preset === 'library_zh' || preset === 'web') next.mark_default = true
-  const formats = new Set(next.export_formats || ['srt'])
-  formats.add('srt')
-  if (preset === 'web') formats.add('vtt')
-  next.export_formats = Array.from(formats)
-  return next
+  const profile = presetSpec(preset)
+  return {
+    ...config,
+    export_preset: profile.id,
+    mark_default: Boolean(profile.supports_default && profile.mark_default),
+  }
 }
 
 export function exportPreview(config, stem = 'Movie') {
   const preset = config.export_preset || 'fnos'
+  const profile = presetSpec(preset)
   const langs = (config.target_languages || ['zh-Hans']).slice(0, 3)
   const layouts = config.export_layouts || ['mono']
-  const formats = config.export_formats || ['srt']
-  const markDefault = Boolean(config.mark_default) && preset !== 'plex' && preset !== 'fnos'
-  const flagFirst = preset === 'library_zh'
+  const formats = [...(config.export_formats || ['srt'])]
+  if (layouts.includes('stacked') && langs.length > 1 && !formats.includes('ass')) formats.push('ass')
+  const markDefault = Boolean(config.mark_default) && Boolean(profile.supports_default)
+  const filenameOptions = {
+    flagFirst: Boolean(profile.flag_first),
+    stemSeparator: profile.stem_separator || '.',
+  }
   const files = []
   for (const layout of layouts) {
     for (const fmt of formats) {
       if (layout === 'mono') {
-        const flags = markDefault && langs[0]?.startsWith('zh') ? ['default'] : []
-        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, { flags, flagFirst }))
+        const flags = defaultFlags(profile, markDefault, langs[0])
+        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, { ...filenameOptions, flags }))
       }
       if (layout === 'stacked' && langs.length > 1) {
-        const codes = langs.map(item => langCode(item, preset))
-        if (preset === 'fnos') {
-          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }))
-        } else if (preset === 'legacy') {
-          files.push(buildFilename(stem, [codes[0]], fmt, { flagFirst }))
-        } else {
-          files.push(buildFilename(stem, [codes[0]], fmt, { title: 'bilingual', flagFirst }))
-        }
+        // A stacked file is one track. Its filename identifies the primary language only.
+        files.push(buildFilename(stem, [langCode(langs[0], preset)], fmt, filenameOptions))
       }
       if (layout === 'split') {
         langs.forEach((lang, index) => {
-          const flags = markDefault && index === 0 && lang.startsWith('zh') ? ['default'] : []
-          files.push(buildFilename(stem, [langCode(lang, preset)], fmt, { flags, flagFirst }))
+          const flags = defaultFlags(profile, markDefault && index === 0, lang)
+          files.push(buildFilename(stem, [langCode(lang, preset)], fmt, { ...filenameOptions, flags }))
         })
       }
     }
   }
-  if (config.effects_enabled) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'ass', { title: 'notes', flagFirst }))
-  if (config.enable_sdh) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'srt', { title: 'sdh', flagFirst }))
-  if (config.save_asr_track) files.push(buildFilename(stem, [langCode('en', preset)], 'srt', { title: 'asr', flagFirst }))
+  if (config.effects_enabled) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'ass', { ...filenameOptions, title: 'notes' }))
+  if (config.enable_sdh) files.push(buildFilename(stem, [langCode(langs[0], preset)], 'srt', { ...filenameOptions, title: 'sdh' }))
+  if (config.save_asr_track) files.push(buildFilename(stem, [langCode('en', preset)], 'srt', { ...filenameOptions, title: 'asr' }))
   return files
 }

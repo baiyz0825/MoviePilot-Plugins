@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ASS_REFERENCE_HEIGHT, LANGS, PANES, PRESETS, STYLE_FONTS, STYLE_LOOKS, applyPreset, exportPreview, frameLabel, frameShare, langLabel, normalizeStyle, overlayCss, sizeForRank } from '../../composables/fields'
+import { ASS_REFERENCE_HEIGHT, LANGS, PANES, PRESET_GROUPS, STYLE_FONTS, STYLE_LOOKS, applyPreset, exportPreview, frameLabel, frameShare, langLabel, normalizeStyle, overlayCss, sizeForRank, supportsDefault } from '../../composables/fields'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -308,7 +308,10 @@ const files = computed(() => exportPreview(config.value))
                 :model-value="config[field.key]"
                 :label="field.label"
                 color="primary"
-                hide-details
+                :disabled="field.key === 'mark_default' && !supportsDefault(config.export_preset)"
+                :hint="field.key === 'mark_default' && !supportsDefault(config.export_preset) ? '当前命名方案不支持 default 标记。' : undefined"
+                :persistent-hint="field.key === 'mark_default' && !supportsDefault(config.export_preset)"
+                :hide-details="field.key !== 'mark_default' || supportsDefault(config.export_preset)"
                 @update:model-value="setField(field.key, $event)"
               />
               <VTextarea
@@ -387,17 +390,27 @@ const files = computed(() => exportPreview(config.value))
               />
               <div v-else-if="field.control === 'preset'">
                 <div class="text-body-2 mb-2">{{ field.label }}</div>
-                <VCard
-                  v-for="preset in PRESETS"
-                  :key="preset.value"
-                  class="ss-card mb-2"
-                  :color="config.export_preset === preset.value ? 'primary' : undefined"
-                  variant="tonal"
-                  @click="usePreset(preset.value)"
-                >
-                  <VCardTitle class="text-subtitle-1">{{ preset.title }}</VCardTitle>
-                  <VCardText>{{ preset.hint }}</VCardText>
-                </VCard>
+                <div v-for="group in PRESET_GROUPS" :key="group.title" class="mb-4">
+                  <div class="text-caption text-medium-emphasis mb-2">{{ group.title }}</div>
+                  <VCard
+                    v-for="preset in group.items"
+                    :key="preset.value"
+                    class="ss-card mb-2"
+                    :color="config.export_preset === preset.value ? 'primary' : undefined"
+                    variant="tonal"
+                    @click="usePreset(preset.value)"
+                  >
+                    <VCardTitle class="text-subtitle-1">{{ preset.title }}</VCardTitle>
+                    <VCardText>{{ preset.hint }}</VCardText>
+                  </VCard>
+                </div>
+                <div class="text-caption text-medium-emphasis mt-3">文件名预览</div>
+                <div class="d-flex flex-wrap ga-1 mt-1">
+                  <VChip v-for="(file, index) in files" :key="`${index}-${file}`" size="small" variant="outlined">{{ file }}</VChip>
+                </div>
+                <div v-if="(config.export_layouts || []).includes('stacked')" class="text-caption text-medium-emphasis mt-2">
+                  叠行文件只标主语种；双语内容保留在字幕正文。
+                </div>
               </div>
               <div v-else-if="field.control === 'lang-order'">
                 <div class="text-body-2 mb-2">{{ field.label }}</div>
@@ -446,7 +459,10 @@ const files = computed(() => exportPreview(config.value))
             :model-value="config[field.key]"
             :label="field.label"
             color="primary"
-            hide-details
+            :disabled="field.key === 'mark_default' && !supportsDefault(config.export_preset)"
+            :hint="field.key === 'mark_default' && !supportsDefault(config.export_preset) ? '当前命名方案不支持 default 标记。' : undefined"
+            :persistent-hint="field.key === 'mark_default' && !supportsDefault(config.export_preset)"
+                :hide-details="field.key !== 'mark_default' || supportsDefault(config.export_preset)"
             @update:model-value="setField(field.key, $event)"
           />
           <VTextarea
@@ -525,14 +541,24 @@ const files = computed(() => exportPreview(config.value))
           />
           <div v-else-if="field.control === 'preset'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
-            <VRow dense>
-              <VCol v-for="item in PRESETS" :key="item.value" cols="12" md="4">
-                <VCard class="ss-card" :color="config.export_preset === item.value ? 'primary' : undefined" variant="tonal" @click="usePreset(item.value)">
-                  <VCardTitle class="text-subtitle-1">{{ item.title }}</VCardTitle>
-                  <VCardText>{{ item.hint }}</VCardText>
-                </VCard>
-              </VCol>
-            </VRow>
+            <div v-for="group in PRESET_GROUPS" :key="group.title" class="mb-4">
+              <div class="text-caption text-medium-emphasis mb-2">{{ group.title }}</div>
+              <VRow dense>
+                <VCol v-for="item in group.items" :key="item.value" cols="12" sm="6" md="4">
+                  <VCard class="ss-card h-100" :color="config.export_preset === item.value ? 'primary' : undefined" variant="tonal" @click="usePreset(item.value)">
+                    <VCardTitle class="text-subtitle-1">{{ item.title }}</VCardTitle>
+                    <VCardText>{{ item.hint }}</VCardText>
+                  </VCard>
+                </VCol>
+              </VRow>
+            </div>
+            <div class="text-caption text-medium-emphasis mt-3">文件名预览</div>
+            <div class="d-flex flex-wrap ga-1 mt-1">
+              <VChip v-for="(file, index) in files" :key="`${index}-${file}`" size="small" variant="outlined">{{ file }}</VChip>
+            </div>
+            <div v-if="(config.export_layouts || []).includes('stacked')" class="text-caption text-medium-emphasis mt-2">
+              叠行文件只标主语种；双语内容保留在字幕正文。
+            </div>
           </div>
           <div v-else-if="field.control === 'lang-order'">
             <div class="text-body-2 mb-2">{{ field.label }}</div>
