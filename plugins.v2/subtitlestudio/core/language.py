@@ -199,7 +199,10 @@ def split_bilingual_lines(text: str, hint: str = "source") -> Tuple[Dict[str, st
     lines = [line.strip() for line in str(text or "").replace("\r", "").split("\n") if line.strip()]
     mixed_hint = is_bilingual_hint(hint)
     if len(lines) < 2:
-        return {}, mixed_hint or len(text_languages(text, hint)) > 1
+        languages = text_languages(text, hint)
+        if len(languages) == 1:
+            return {}, False
+        return {}, mixed_hint or len(languages) > 1
     grouped: Dict[str, List[str]] = {}
     uncertain = False
     for line in lines:
@@ -213,7 +216,8 @@ def split_bilingual_lines(text: str, hint: str = "source") -> Tuple[Dict[str, st
         grouped.setdefault(language, []).append(line)
     if not uncertain and len(grouped) == 2:
         return {language: "\n".join(parts) for language, parts in grouped.items()}, False
-    looks_mixed = mixed_hint or len(text_languages(text, hint)) > 1 or len(grouped) > 1
+    all_languages = text_languages(text, hint)
+    looks_mixed = uncertain or len(all_languages) > 1 or len(grouped) > 1 or (mixed_hint and not grouped)
     return {}, bool(looks_mixed)
 
 

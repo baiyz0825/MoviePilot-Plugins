@@ -101,7 +101,12 @@ def build_batch_prompt(
 
 
 def _source_text(cue: Any, source_lang: str) -> str:
-    return cue.text(source_lang) or cue.text("source") or cue.text()
+    normalized = canonical_language(source_lang)
+    if normalized == "source":
+        return cue.text("source") or cue.text()
+    # Never treat another target language as source text when this cue lacks
+    # the declared source track. That can copy English into the Chinese key.
+    return cue.text(normalized) or cue.text("source")
 
 
 class TranslationService:

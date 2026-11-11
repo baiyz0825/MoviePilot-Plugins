@@ -41,6 +41,13 @@ def test_wrong_language_metadata_migrates_and_enters_translation():
     shared.test_wrong_language_metadata_migrates_and_enters_translation(gen="v3")
 
 
+def test_single_language_cues_inside_bilingual_subtitles_use_detected_language():
+    shared.test_single_language_cues_inside_bilingual_subtitles_use_detected_language(gen="v3")
+
+
+def test_translation_does_not_copy_other_language_into_missing_source_key():
+    shared.test_translation_does_not_copy_other_language_into_missing_source_key(gen="v3")
+
 def test_free_translation_rejects_original_and_tries_next_engine():
     shared.test_free_translation_rejects_original_and_tries_next_engine(gen="v3")
 

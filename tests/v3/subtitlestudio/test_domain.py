@@ -68,6 +68,9 @@ def test_bilingual_srt_vtt_split_and_uncertain_cases():
     shared.test_bilingual_srt_vtt_split_and_uncertain_cases(gen="v3")
 
 
+def test_exported_text_matches_selected_target_languages():
+    shared.test_exported_text_matches_selected_target_languages(gen="v3")
+
 def test_job_store_enforces_normalized_cuegraph(tmp_path):
     shared.test_job_store_enforces_normalized_cuegraph(tmp_path, gen="v3")
 

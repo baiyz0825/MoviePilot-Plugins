@@ -133,6 +133,70 @@ def test_online_wrong_metadata_full_bilingual_export_chain(tmp_path: Path, gen: 
         assert body.count("这是一条英文字幕。") == 1
 
 
+def test_partial_bilingual_source_keeps_mono_ass_in_primary_language(tmp_path: Path, gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    store_mod = load_domain(gen, "storage.job_store")
+    gen_mod = load_domain(gen, "pipeline.generation")
+    video = tmp_path / "Movie.mkv"
+    video.write_bytes(b"x")
+    llm_calls = []
+
+    def llm(prompt, system="", role="translate"):
+        llm_calls.append((prompt, system, role))
+        return "[]"
+
+    content = (
+        "1\n00:00:01,000 --> 00:00:03,000\n"
+        "这是一句中文原文字幕。\nThis is its English translation.\n\n"
+        "2\n00:00:03,200 --> 00:00:05,000\nNo.\n"
+    )
+    store = store_mod.JobStore(tmp_path, plugin_id="SubtitleStudio")
+    pipeline = gen_mod.GenerationPipeline(
+        store,
+        lambda: {
+            "online_search_enabled": True,
+            "timeline_auto_align": False,
+            "translate_enabled": True,
+            "translate_backend": "llm_only",
+            "target_languages": ["zh-Hans", "en"],
+            "export_preset": "library_zh",
+            "export_layouts": ["mono"],
+            "export_formats": ["ass"],
+            "overwrite_policy": "overwrite",
+            "enable_asr": False,
+            "effects_enabled": False,
+        },
+        searcher=lambda *_args, **_kwargs: {
+            "content": content,
+            "filename": "Movie.zh.srt",
+            "lang": "zh-Hans",
+        },
+        llm=llm,
+    )
+    job = models.Job(job_id="partial-bilingual-ass", title="Movie", path=str(video), trigger="manual")
+    store.save_job(job)
+
+    saved = pipeline.run(job)
+
+    graph = store.get_graph(job.job_id)
+    assert saved.status == "success"
+    assert graph.source_lang == "zh-Hans"
+    assert graph.cues[0].texts == {
+        "zh-Hans": "这是一句中文原文字幕。",
+        "en": "This is its English translation.",
+    }
+    assert graph.cues[1].texts == {"en": "No."}
+    assert llm_calls == []
+    exported = [item for item in saved.payload["export"] if item.get("written")]
+    assert len(exported) == 1
+    ass = Path(exported[0]["path"]).read_text(encoding="utf-8")
+    dialogue = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
+    assert len(dialogue) == 1
+    assert dialogue[0].endswith("这是一句中文原文字幕。")
+    assert "This is its English translation." not in ass
+    assert "No." not in ass
+
+
 def test_embedded_follows_failed_online_search(tmp_path: Path, monkeypatch, gen: str = GEN):
     models = load_domain(gen, "core.models")
     store_mod = load_domain(gen, "storage.job_store")

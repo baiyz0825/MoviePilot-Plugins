@@ -95,7 +95,8 @@ def _texts_and_issues(text: str, lang: str, cue_id: str) -> tuple[Dict[str, str]
             message="检测到混合语言，但无法可靠按行拆轨；已保留原文",
             cue_id=cue_id,
         ))
-    key = canonical_language(lang)
+    detected = detect_text_language(text, lang)
+    key = detected if detected != "source" else canonical_language(lang)
     return ({key: text} if text else {}), issues
 
 

@@ -456,6 +456,72 @@ def test_bilingual_srt_vtt_split_and_uncertain_cases(gen: str = GEN):
     assert any(issue.code == "bilingual_split_uncertain" for issue in mixed_line.cues[0].issues)
 
 
+def test_exported_text_matches_selected_target_languages(gen: str = GEN):
+    models = load_domain(gen, "core.models")
+    naming = load_domain(gen, "core.naming")
+    packager = load_domain(gen, "packager.export_pack")
+    chinese = "这是对应的简体中文译文。"
+    english = "This is the matching English subtitle."
+    graph = models.CueGraph(
+        job_id="export-language-matrix",
+        source_lang="en",
+        cues=[models.Cue(
+            cue_id="line-1",
+            index=1,
+            start_ms=1000,
+            end_ms=3000,
+            texts={"en": english, "zh-Hans": chinese},
+        )],
+    )
+    common = {
+        "export_preset": "library_zh",
+        "target_languages": ["zh-Hans", "en"],
+        "export_formats": ["srt", "ass"],
+        "lang_stack": "main_top",
+    }
+
+    mono_plans = naming.export_plan({**common, "export_layouts": ["mono"]}, "Movie")
+    assert len(mono_plans) == 2
+    for plan in mono_plans:
+        assert plan["langs"] == ["zh-Hans"]
+        rendered = packager.render_plan_text(graph, plan)
+        assert chinese in rendered
+        assert english not in rendered
+
+    split_plans = naming.export_plan(
+        {**common, "export_layouts": ["split"], "export_formats": ["srt"]},
+        "Movie",
+    )
+    assert {tuple(plan["langs"]) for plan in split_plans} == {("zh-Hans",), ("en",)}
+    for plan in split_plans:
+        rendered = packager.render_plan_text(graph, plan)
+        requested = plan["langs"][0]
+        if requested == "zh-Hans":
+            assert chinese in rendered
+            assert english not in rendered
+        else:
+            assert english in rendered
+            assert chinese not in rendered
+
+    stacked_plans = naming.export_plan(
+        {**common, "export_layouts": ["stacked"], "export_formats": ["srt"]},
+        "Movie",
+    )
+    assert {plan["format"] for plan in stacked_plans} == {"srt", "ass"}
+    assert all(plan["langs"] == ["zh-Hans", "en"] for plan in stacked_plans)
+    stacked_srt = packager.render_plan_text(graph, next(plan for plan in stacked_plans if plan["format"] == "srt"))
+    assert stacked_srt.index(chinese) < stacked_srt.index(english)
+
+    stacked_ass = packager.render_plan_text(graph, next(plan for plan in stacked_plans if plan["format"] == "ass"))
+    dialogue = [line for line in stacked_ass.splitlines() if line.startswith("Dialogue:")]
+    assert len(dialogue) == 2
+    assert "Lang2" in dialogue[0] and dialogue[0].endswith(english)
+    assert "Lang1" in dialogue[1] and dialogue[1].endswith(chinese)
+    lang1 = next(line for line in stacked_ass.splitlines() if line.startswith("Style: Lang1,"))
+    lang2 = next(line for line in stacked_ass.splitlines() if line.startswith("Style: Lang2,"))
+    assert int(lang1.split(",")[21]) > int(lang2.split(",")[21])
+
+
 def test_job_store_enforces_normalized_cuegraph(tmp_path: Path, gen: str = GEN):
     models = load_domain(gen, "core.models")
     store_mod = load_domain(gen, "storage.job_store")

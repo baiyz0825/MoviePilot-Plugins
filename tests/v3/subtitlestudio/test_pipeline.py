@@ -13,6 +13,9 @@ def test_online_wrong_metadata_full_bilingual_export_chain(tmp_path):
     shared.test_online_wrong_metadata_full_bilingual_export_chain(tmp_path, gen="v3")
 
 
+def test_partial_bilingual_source_keeps_mono_ass_in_primary_language(tmp_path):
+    shared.test_partial_bilingual_source_keeps_mono_ass_in_primary_language(tmp_path, gen="v3")
+
 def test_embedded_follows_failed_online_search(tmp_path, monkeypatch):
     shared.test_embedded_follows_failed_online_search(tmp_path, monkeypatch, gen="v3")
 

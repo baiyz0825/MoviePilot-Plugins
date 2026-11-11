@@ -226,6 +226,94 @@ def test_wrong_language_metadata_migrates_and_enters_translation(gen: str = GEN)
     assert lines == ["This is an English subtitle.", "这是一条英文字幕。"]
 
 
+def test_single_language_cues_inside_bilingual_subtitles_use_detected_language(gen: str = GEN):
+    cuegraph = load_domain(gen, "core.cuegraph")
+    content = (
+        "1\n00:00:01,000 --> 00:00:03,000\n"
+        "这是一句中文原文字幕。\nThis is its English translation.\n\n"
+        "2\n00:00:03,200 --> 00:00:05,000\nNo.\n"
+    )
+
+    for hint in ("zh-Hans", "bilingual"):
+        graph = cuegraph.parse_srt(content, lang=hint, job_id=f"single-line-{hint}")
+        assert graph.cues[0].texts == {
+            "zh-Hans": "这是一句中文原文字幕。",
+            "en": "This is its English translation.",
+        }
+        assert graph.cues[1].texts == {"en": "No."}
+        assert not any(issue.code == "bilingual_split_uncertain" for issue in graph.cues[1].issues)
+
+    vtt = cuegraph.parse_vtt(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nNo.\n",
+        lang="zh-Hans",
+        job_id="single-line-vtt",
+    )
+    assert vtt.cues[0].texts == {"en": "No."}
+
+    reverse = cuegraph.parse_srt(
+        "1\n00:00:01,000 --> 00:00:03,000\n这是一句中文原文字幕。\n",
+        lang="en",
+        job_id="single-line-reverse",
+    )
+    assert reverse.cues[0].texts == {"zh-Hans": "这是一句中文原文字幕。"}
+
+
+def test_translation_does_not_copy_other_language_into_missing_source_key(gen: str = GEN):
+    trans = load_domain(gen, "pipeline.translation")
+    models = load_domain(gen, "core.models")
+    cases = [
+        (
+            "zh-Hans",
+            {"zh-Hans": "这是一句中文原文字幕。", "en": "This is its English translation."},
+            {"en": "No."},
+        ),
+        (
+            "en",
+            {"en": "This is an English source subtitle.", "zh-Hans": "这是中文译文。"},
+            {"zh-Hans": "好"},
+        ),
+    ]
+
+    for source_lang, paired_texts, single_target_texts in cases:
+        calls = []
+
+        def llm(prompt, system="", role="translate"):
+            calls.append((prompt, system, role))
+            return "[]"
+
+        graph = models.CueGraph(
+            job_id=f"partial-bilingual-{source_lang}",
+            source_lang=source_lang,
+            cues=[
+                models.Cue(
+                    cue_id="paired",
+                    index=1,
+                    start_ms=0,
+                    end_ms=1000,
+                    texts=dict(paired_texts),
+                ),
+                models.Cue(
+                    cue_id="single-target",
+                    index=2,
+                    start_ms=1100,
+                    end_ms=2000,
+                    texts=dict(single_target_texts),
+                ),
+            ],
+        )
+        service = trans.TranslationService(
+            {"translate_enabled": True, "translate_backend": "llm_only"},
+            http=lambda *args, **kwargs: None,
+            llm=llm,
+        )
+
+        service.translate_graph(graph, ["zh-Hans", "en"])
+
+        assert graph.source_lang == source_lang
+        assert graph.cues[0].texts == paired_texts
+        assert graph.cues[1].texts == single_target_texts
+        assert calls == []
+
 def test_free_translation_rejects_original_and_tries_next_engine(gen: str = GEN):
     engines = load_domain(gen, "pipeline.mt_engines")
     original = "This is an English subtitle."
